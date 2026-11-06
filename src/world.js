@@ -7,7 +7,13 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 export const BRAND = { rose: '#D6006C', navy: '#2E3484', blue: '#4676ED', purple: '#6A3FB5', ink: '#1d2050', paper: '#F7F6FA', lav: '#EEF0FB' };
 
 export const ROOMS = {
-  jardin:      { x0: -22, x1: 30, z0: -36, z1: 26,  label: 'Jardin & terrasse',       short: 'JARDIN',      color: '#3A8A5C' },
+  jardin:      { x0: -30, x1: 30, z0: -36, z1: 26,  label: 'Jardin & terrasse',       short: 'JARDIN',      color: '#3A8A5C' },
+  bulle1:      { x0: -21.5, x1: -16.5, z0: 0, z1: 3,      label: 'Bulle 1 · 2 pers.', short: 'BULLE 1', color: '#8C6AD6', cap: 2 },
+  bulle2:      { x0: -21.5, x1: -16.5, z0: 3, z1: 6,      label: 'Bulle 2 · 2 pers.', short: 'BULLE 2', color: '#8C6AD6', cap: 2 },
+  bulle3:      { x0: -21.5, x1: -16.5, z0: 6, z1: 9,      label: 'Bulle 3 · 2 pers.', short: 'BULLE 3', color: '#8C6AD6', cap: 2 },
+  bulle4:      { x0: -21.5, x1: -16.5, z0: 9, z1: 12.5,   label: 'Bulle 4 · 3 pers.', short: 'BULLE 4', color: '#6A3FB5', cap: 3 },
+  bulle5:      { x0: -21.5, x1: -16.5, z0: 12.5, z1: 16,  label: 'Bulle 5 · 3 pers.', short: 'BULLE 5', color: '#6A3FB5', cap: 3 },
+  bulles:      { x0: -16.5, x1: -14, z0: 0, z1: 16,       label: 'Espace bulles',     short: 'BULLES',  color: '#9AA3C7' },
   reunion:     { x0: -14, x1: -2, z0: -13, z1: 0,   label: 'Réunion · Brainstorm',    short: 'RÉUNION',     color: BRAND.blue },
   prospection: { x0: -14, x1: -2, z0: -28, z1: -13, label: 'Prospection commerciale', short: 'PROSPECTION', color: BRAND.rose },
   dressing:    { x0: 2,   x1: 12, z0: -10, z1: 0,   label: 'Dressing',                short: 'DRESSING',    color: '#B44DB0' },
@@ -15,9 +21,10 @@ export const ROOMS = {
   couloir:     { x0: -2,  x1: 2,  z0: -28, z1: 0,   label: 'Couloir',                 short: 'COULOIR',     color: '#8C93C4' },
   accueil:     { x0: -14, x1: 14, z0: 0,   z1: 16,  label: 'Accueil',                 short: 'ACCUEIL',     color: BRAND.navy },
 };
-const ORDER = ['reunion', 'prospection', 'dressing', 'amphi', 'couloir', 'accueil', 'jardin'];
-export const ISLAND = { x0: -22, x1: 30, z0: -36, z1: 26 };
-export const ENCLOSED = new Set(['reunion', 'prospection', 'dressing', 'amphi']);
+export const BULLES = ['bulle1', 'bulle2', 'bulle3', 'bulle4', 'bulle5'];
+const ORDER = ['reunion', 'prospection', 'dressing', 'amphi', 'couloir', 'accueil', ...BULLES, 'bulles', 'jardin'];
+export const ISLAND = { x0: -30, x1: 30, z0: -36, z1: 26 };
+export const ENCLOSED = new Set(['reunion', 'prospection', 'dressing', 'amphi', 'bulle1', 'bulle2', 'bulle3', 'bulle4', 'bulle5']);
 
 export function zoneAt(x, z) {
   for (const k of ORDER) { const r = ROOMS[k]; if (x >= r.x0 && x <= r.x1 && z >= r.z0 && z <= r.z1) return k; }
@@ -193,6 +200,9 @@ export function buildWorld(scene) {
     prospection: ['carpet', '#4A5296', '#5A64B0', 0.95],
     dressing: ['herring', '#E6CFAE', 'rgba(140,100,60,.35)', 0.5],
     amphi: ['carpet', '#262B6B', '#3A2F80', 0.95],
+    bulles: ['carpet', '#3A418E', null, 0.95],
+    bulle1: ['oak', '#E3C9A4', '#C4A47A', 0.55], bulle2: ['oak', '#E3C9A4', '#C4A47A', 0.55], bulle3: ['oak', '#E3C9A4', '#C4A47A', 0.55],
+    bulle4: ['carpet', '#D9D3EE', 'rgba(106,63,181,.25)', 0.95], bulle5: ['carpet', '#D9D3EE', 'rgba(106,63,181,.25)', 0.95],
   };
   for (const [k, [kind, a, b, rough]] of Object.entries(floors)) {
     if (k === 'jardin') continue;
@@ -208,7 +218,12 @@ export function buildWorld(scene) {
   // bande dépolie décorative (vitrophanie rose) sur les vitres
   const WALLS = [
     { a: [-14, 16], b: [14, 16], t: 's', gaps: [[-1.6, 1.6]] },
-    { a: [-14, 0], b: [-14, 16], t: 's' },
+    { a: [-14, 0], b: [-14, 16], t: 's', gaps: [[13.2, 14.8]] },
+    { a: [-21.5, 0], b: [-21.5, 16], t: 's' },
+    { a: [-21.5, 0], b: [-14, 0], t: 's' },
+    { a: [-21.5, 16], b: [-14, 16], t: 's' },
+    { a: [-16.5, 0], b: [-16.5, 16], t: 'g', gaps: [[0.9, 2.1], [3.9, 5.1], [6.9, 8.1], [10.15, 11.35], [13.65, 14.85]] },
+    { a: [-21.5, 3], b: [-16.5, 3], t: 's' }, { a: [-21.5, 6], b: [-16.5, 6], t: 's' }, { a: [-21.5, 9], b: [-16.5, 9], t: 's' }, { a: [-21.5, 12.5], b: [-16.5, 12.5], t: 's' },
     { a: [14, 0], b: [14, 16], t: 's', gaps: [[8.6, 10.4]] },
     { a: [-14, 0], b: [-2, 0], t: 's' },
     { a: [2, 0], b: [14, 0], t: 's' },
@@ -363,14 +378,18 @@ export function buildWorld(scene) {
     prospection: [-1.92, 2.62, -20.5, Math.PI / 2],
     dressing: [1.92, 2.62, -5, -Math.PI / 2],
     amphi: [1.92, 3.25, -19, -Math.PI / 2],
+    bulle1: [-16.42, 2.62, 1.5, Math.PI / 2], bulle2: [-16.42, 2.62, 4.5, Math.PI / 2], bulle3: [-16.42, 2.62, 7.5, Math.PI / 2],
+    bulle4: [-16.42, 2.62, 10.75, Math.PI / 2], bulle5: [-16.42, 2.62, 14.25, Math.PI / 2],
   };
   for (const [k, [x, y, z, ry]] of Object.entries(doors)) {
     const s = makeSign(2.2, 0.55); s.mesh.position.set(x, y, z); s.mesh.rotation.y = ry; W.add(s.mesh); doorSigns[k] = s;
   }
-  function updateDoorSigns(counts) {
+  function updateDoorSigns(counts, locks = {}) {
     for (const [k, s] of Object.entries(doorSigns)) {
-      const n = counts[k] || 0, key = k + n; if (s._k === key) continue; s._k = key;
-      s.draw([{ text: ROOMS[k].short, size: 52, weight: 800, color: BRAND.navy, y: 0.38 }, { text: n ? `● ${n} présent${n > 1 ? 's' : ''}` : '○ libre', size: 38, weight: 600, color: n ? BRAND.rose : '#8C93C4', y: 0.74 }], { bg: '#ffffff', accent: ROOMS[k].color, align: 'left' });
+      const n = counts[k] || 0, lk = !!locks[k], key = k + n + lk; if (s._k === key) continue; s._k = key;
+      const cap = ROOMS[k].cap;
+      const sub = lk ? '■ Fermée · frapper (E)' : n ? `● ${n}${cap ? '/' + cap : ''} présent${n > 1 ? 's' : ''}` : cap ? `○ libre · ${cap} pers.` : '○ libre';
+      s.draw([{ text: ROOMS[k].short, size: 52, weight: 800, color: BRAND.navy, y: 0.38 }, { text: sub, size: 36, weight: 600, color: lk ? '#E11D48' : n ? BRAND.rose : '#8C93C4', y: 0.74 }], { bg: '#ffffff', accent: lk ? '#E11D48' : ROOMS[k].color, align: 'left' });
     }
   }
   const corrSign = makeSign(3.8, 0.45); corrSign.mesh.position.set(0, 2.75, 0.14); W.add(corrSign.mesh);
@@ -401,7 +420,7 @@ export function buildWorld(scene) {
       setStream(stream, sharer) {
         this.clear();
         const v = document.createElement('video'); v.muted = true; v.playsInline = true; v.autoplay = true; v.srcObject = stream; v.play().catch(() => {});
-        const vt = new THREE.VideoTexture(v); vt.colorSpace = THREE.SRGBColorSpace;
+        const vt = new THREE.VideoTexture(v); vt.colorSpace = THREE.SRGBColorSpace; vt.minFilter = THREE.LinearFilter; vt.magFilter = THREE.LinearFilter; vt.generateMipmaps = false; vt.anisotropy = 16;
         screen.material.map = vt; screen.material.needsUpdate = true; this.video = v; this.sharer = sharer;
       },
       clear() {
@@ -614,7 +633,7 @@ export function buildWorld(scene) {
   roundTable(-9.6, 8, 0.75, 0.4);
   cyl(W, 0.09, 0.07, 0.18, lam(BRAND.rose, 0.3), -9.4, 0.4, 7.8, 12); cyl(W, 0.14, 0.14, 0.03, M.oakLight(), -9.85, 0.4, 8.2, 16);
   floorLamp(-6.3, 11.3, Math.PI * 0.75);
-  plant(-13.1, 14.9, 1.3, 'tall'); plant(-13.1, 1.1, 1.2, 'palm', BRAND.navy);
+  plant(-13.1, 12.4, 1.2, 'tall'); plant(-13.1, 1.1, 1.2, 'palm', BRAND.navy);
   light(-9.6, 2.7, 8, '#FFE4C4', 10, 10);
 
   // Accueil / réception
@@ -651,7 +670,7 @@ export function buildWorld(scene) {
   light(11, 2.6, 3.6, '#FFE1C2', 6, 7);
   // Entrée (sud) et porte terrasse (est) : encadrements + portes vitrées ouvertes
   const doorGlass = new THREE.MeshPhysicalMaterial({ color: 0xe8efff, transmission: 0.7, roughness: 0.15, thickness: 0.05 });
-  for (const [cx, cz, alongZ, wd] of [[0, 16, false, 3.2], [14, 9.5, true, 1.8]]) {
+  for (const [cx, cz, alongZ, wd] of [[0, 16, false, 3.2], [14, 9.5, true, 1.8], [-14, 14, true, 1.6]]) {
     const g = new THREE.Group(); g.position.set(cx, 0, cz); if (alongZ) g.rotation.y = Math.PI / 2; W.add(g);
     box(g, wd + 0.2, 0.18, 0.32, metal, 0, 2.5, 0, 0.02);
     for (const s2 of [-1, 1]) {
@@ -707,19 +726,35 @@ export function buildWorld(scene) {
     const key = name || ''; if (onAir._k === key) return; onAir._k = key;
     onAir.draw(name
       ? [{ text: '● EN APPEL', color: BRAND.rose, size: 70, weight: 800, y: 0.36 }, { text: name, size: 52, weight: 600, color: BRAND.navy, y: 0.74 }]
-      : [{ text: 'Poste d\'appel', color: BRAND.navy, size: 62, weight: 800, y: 0.38 }, { text: 'Assieds-toi pour appeler', size: 44, weight: 500, color: '#8C93C4', y: 0.74 }],
+      : [{ text: 'Table d\'appels', color: BRAND.navy, size: 62, weight: 800, y: 0.38 }, { text: 'Chacun appelle à son tour', size: 44, weight: 500, color: '#8C93C4', y: 0.74 }],
       { bg: '#ffffff', accent: name ? BRAND.rose : BRAND.navy, align: 'left' });
   }
   setOnAir(null); redrawers.push(() => { const k = onAir._k; onAir._k = '__'; setOnAir(k || null); });
-  const pd = new THREE.Group(); pd.position.set(-8, 0, -25.4); W.add(pd);
-  box(pd, 2.8, 0.74, 0.95, M.white(), 0, 0, 0, 0.04); box(pd, 2.9, 0.05, 1.05, M.oak(), 0, 0.74, 0, 0.02);
-  box(pd, 0.9, 0.52, 0.04, lam('#15172A', 0.3, 0.5), 0.5, 0.95, -0.2, 0.01); box(pd, 0.08, 0.2, 0.08, M.black(), 0.5, 0.79, -0.22, 0.01);
-  box(pd, 0.84, 0.46, 0.01, M.glow('#3E58C9'), 0.5, 0.98, -0.175, 0);
-  box(pd, 0.18, 0.04, 0.32, M.black(), -0.7, 0.79, 0.05, 0.01); box(pd, 0.5, 0.02, 0.18, lam('#ECEDF2', 0.6), -0.1, 0.79, 0.2, 0.005);
-  addCol(-9.45, -6.55, -25.95, -24.85);
-  const callSeat = chair(-8, -26.45, 0, BRAND.rose, 'poste-appel', 'prospection', 'callDesk', 0, 'office');
-  rug(-8, -19.6, 9.5, 4.6, (g, w, h) => { g.fillStyle = '#EEF0FB'; g.fillRect(0, 0, w, h); noise(g, w, h, 10); g.fillStyle = BRAND.rose; g.fillRect(0, 0, w, 10); g.fillRect(0, h - 10, w, 10); });
-  for (const [row, zz] of [[0, -20.9], [1, -18.6]]) for (let i = 0; i < 5; i++) chair(-11.6 + i * 1.8 + row * 0.9 - 0.45, zz, Math.PI, row ? BRAND.blue : BRAND.navy, 'prospection', 'prospection', 'chair', 0, 'office');
+  // Grande table commune : chacun appelle à son tour depuis sa place
+  rug(-8, -20.5, 10, 6, (g, w, h) => { g.fillStyle = '#EEF0FB'; g.fillRect(0, 0, w, h); noise(g, w, h, 10); g.strokeStyle = BRAND.rose; g.lineWidth = 8; g.strokeRect(16, 16, w - 32, h - 32); });
+  const pt = new THREE.Group(); pt.position.set(-8, 0, -20.5); W.add(pt);
+  box(pt, 7.2, 0.07, 3.0, M.oak(), 0, 0.72, 0, 0.6);
+  box(pt, 6.9, 0.02, 2.7, lam(BRAND.navy, 0.8), 0, 0.79, 0, 0.5);
+  for (const sx of [-2.4, 2.4]) { box(pt, 0.12, 0.72, 1.6, M.white(), sx, 0, 0, 0.04); box(pt, 0.6, 0.04, 1.8, M.white(), sx, 0, 0, 0.02); }
+  box(pt, 4.6, 0.1, 0.12, M.white(), 0, 0.6, 0, 0.03);
+  addCol(-11.6, -4.4, -22.0, -19.0);
+  // phare "en appel" au centre de la table
+  cyl(pt, 0.22, 0.26, 0.08, M.black(), 0, 0.81, 0, 16);
+  const beaconMat = new THREE.MeshStandardMaterial({ color: '#5A2040', emissive: '#000000', roughness: 0.3, transparent: true, opacity: 0.92 });
+  const beacon = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.34, 16), beaconMat); beacon.position.set(-8, 1.06, -20.5); beacon.userData.keep = true; W.add(beacon);
+  vase(-9.9, 0.81, -20.5, BRAND.rose); vase(-6.1, 0.81, -20.5, BRAND.blue);
+  const pSeats = [];
+  const placeAt = (x, z, ry) => {
+    pSeats.push(chair(x, z, ry, BRAND.navy, 'prospection', 'prospection', 'prospect', 0, 'office'));
+    const [dx, dz] = rotXZ(0, 0.62, ry);
+    laptop(x + dx, 0.79, z + dz, ry + Math.PI);
+    const [hx, hz] = rotXZ(0.32, 0.55, ry);
+    const hs = new THREE.Mesh(new THREE.TorusGeometry(0.08, 0.015, 5, 12, Math.PI), M.black()); hs.position.set(x + hx, 0.81, z + hz); hs.rotation.set(-Math.PI / 2, 0, ry); W.add(hs);
+  };
+  for (const x of [-10.5, -8.85, -7.15, -5.5]) { placeAt(x, -22.45, 0); placeAt(x, -18.55, Math.PI); }
+  placeAt(-12.25, -20.5, Math.PI / 2); placeAt(-3.75, -20.5, -Math.PI / 2);
+  const callSeat = null;
+  function setBeacon(on) { beaconMat.emissive.set(on ? BRAND.rose : '#000000'); beaconMat.emissiveIntensity = on ? 2.2 : 0; beaconMat.color.set(on ? '#FF4D9A' : '#5A2040'); }
   makeTV('tv-prospection', 'prospection', -13.82, 1.65, -18.5, Math.PI / 2, 3.6, 2.05, 'Écran prospection', 'Partage la fiche client ou ton script');
   plant(-2.9, -27.2, 1.1, 'palm'); plant(-13.1, -27.2, 1.0, 'tall'); plant(-13.1, -14.0, 0.8, 'snake', BRAND.navy);
   light(-8, 2.6, -24.5, '#FFE7EF', 9, 8); light(-8, 2.8, -19.5, '#FFF3E2', 6, 9);
@@ -780,6 +815,78 @@ export function buildWorld(scene) {
   plant(21.2, -10.9, 1.2, 'palm'); plant(21.2, -27.1, 1.2, 'palm');
   light(19.5, 3.8, -19, '#E8ECFF', 14, 12); light(10, 3.6, -19, '#FFE8F2', 7, 12);
 
+  // ===================== TABLEAU DES VICTOIRES (accueil, mur d'entrée) =====================
+  let winsList = [];
+  const WIN_TYPES = { 'Client signé': ['🤝', BRAND.rose], 'Recrutement validé': ['🎯', BRAND.blue], 'Nouveau mandat': ['📄', '#6A3FB5'], 'Candidat placé': ['⭐', '#F2A93B'], 'Autre victoire': ['🏆', '#3A8A5C'] };
+  const winsBoard = canvasPlane(-8, 1.75, 15.86, Math.PI, 6, 2.5, 300, (g, w, h) => {
+    g.fillStyle = '#ffffff'; g.fillRect(0, 0, w, h);
+    const gr = g.createLinearGradient(0, 0, w, 0); gr.addColorStop(0, BRAND.navy); gr.addColorStop(1, '#6A3FB5');
+    g.fillStyle = gr; g.fillRect(0, 0, w, h * 0.17);
+    g.fillStyle = '#fff'; g.textBaseline = 'middle'; g.textAlign = 'left';
+    g.font = `800 ${h * 0.085}px ${FONT_TITLE}`; g.fillText('🏆 Tableau des victoires', w * 0.025, h * 0.087);
+    g.textAlign = 'right'; g.font = `600 ${h * 0.045}px ${FONT_TEXT}`; g.fillStyle = 'rgba(255,255,255,.85)';
+    g.fillText(winsList.length ? `${winsList.length} victoire${winsList.length > 1 ? 's' : ''} · bravo l'équipe !` : 'Appuie sur E ici pour inscrire la tienne', w * 0.975, h * 0.087);
+    const cols = 3, rows = 2, pad = w * 0.018, cw = (w - pad * (cols + 1)) / cols, ch = (h * 0.8 - pad * (rows + 1)) / rows;
+    const items = winsList.slice(-cols * rows).reverse();
+    if (!items.length) { g.textAlign = 'center'; g.fillStyle = '#8C93C4'; g.font = `600 ${h * 0.06}px ${FONT_TEXT}`; g.fillText('Aucune victoire pour l\'instant… à toi de jouer !', w / 2, h * 0.58); }
+    items.forEach((it, i) => {
+      const x = pad + (i % cols) * (cw + pad), y = h * 0.17 + pad + Math.floor(i / cols) * (ch + pad);
+      const [emo, col] = WIN_TYPES[it.type] || WIN_TYPES['Autre victoire'];
+      g.fillStyle = 'rgba(46,52,132,.08)'; rrect(g, x + 4, y + 5, cw, ch, 14); g.fill();
+      g.fillStyle = '#F7F6FA'; rrect(g, x, y, cw, ch, 14); g.fill();
+      g.fillStyle = col; rrect(g, x, y, 12, ch, 6); g.fill();
+      g.textAlign = 'left'; g.textBaseline = 'top';
+      g.fillStyle = col; g.font = `700 ${ch * 0.12}px ${FONT_TEXT}`; g.fillText(`${emo} ${it.type}`, x + 30, y + ch * 0.08, cw - 40);
+      g.fillStyle = BRAND.ink; g.font = `600 ${ch * 0.13}px ${FONT_TEXT}`; wrapText(g, it.text, x + 30, y + ch * 0.3, cw - 48, ch * 0.16, 3);
+      g.fillStyle = '#6B7099'; g.font = `600 ${ch * 0.11}px ${FONT_TEXT}`;
+      g.fillText(`${it.who} · ${new Date(it.ts).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}`, x + 30, y + ch * 0.8, cw - 40);
+    });
+  });
+  { const fr = new THREE.Mesh(rbox(6.2, 2.7, 0.06, 0.02), lam('#1F2238', 0.5)); fr.position.set(-8, 1.75, 15.9); W.add(fr); }
+  wallLight(-11.4, 2.75, 15.87, Math.PI, '#FFE7C2'); wallLight(-4.6, 2.75, 15.87, Math.PI, '#FFE7C2');
+  function drawWins(list) { winsList = list.slice(); winsBoard.redraw(); }
+  const winsSpot = new THREE.Vector3(-8, 0, 14.6);
+
+  // ===================== ESPACE BULLES =====================
+  // panneau d'accès depuis l'accueil
+  canvasPlane(-13.86, 2.62, 14, Math.PI / 2, 2.4, 0.5, 260, (g, w, h) => { g.fillStyle = '#6A3FB5'; g.fillRect(0, 0, w, h); g.fillStyle = '#fff'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.font = `700 ${h * 0.42}px ${FONT_TITLE}`; g.fillText('← Espace bulles', w / 2, h / 2); });
+  paint(-21.37, 1.5, 8, Math.PI / 2, 16, 3, '#EFEAF8');
+  const bulleDoors = {}, blinds = {};
+  const blindCanvas = mkCanvas(256, 256); {
+    const g = blindCanvas.getContext('2d'); g.fillStyle = BRAND.navy; g.fillRect(0, 0, 256, 256);
+    for (let y = 0; y < 256; y += 16) { g.fillStyle = 'rgba(255,255,255,.08)'; g.fillRect(0, y, 256, 3); g.fillStyle = 'rgba(0,0,0,.18)'; g.fillRect(0, y + 13, 256, 3); }
+  }
+  for (const id of BULLES) {
+    const r = ROOMS[id], zm = (r.z0 + r.z1) / 2, len = r.z1 - r.z0, cap = r.cap;
+    bulleDoors[id] = { x: -16.5, z: zm, box: { minX: -16.65, maxX: -16.35, minZ: zm - 0.62, maxZ: zm + 0.62 } };
+    // store "ne pas déranger" (visible quand la bulle est fermée)
+    const bt = canvasTex(blindCanvas); bt.wrapS = bt.wrapT = THREE.RepeatWrapping; bt.repeat.set(len / 2, 1.4);
+    const bm = new THREE.Mesh(new THREE.PlaneGeometry(len - 0.08, 2.75), new THREE.MeshStandardMaterial({ map: bt, roughness: 0.9, side: THREE.DoubleSide }));
+    bm.position.set(-16.44, 1.44, zm); bm.rotation.y = Math.PI / 2; bm.visible = false; bm.userData.keep = true; W.add(bm);
+    const lab = canvasPlane(-16.42, 1.55, zm, Math.PI / 2, Math.min(2.4, len - 0.4), 0.5, 240, (g, w, h) => { g.clearRect(0, 0, w, h); g.fillStyle = '#fff'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.font = `700 ${h * 0.4}px ${FONT_TITLE}`; g.fillText('Ne pas déranger', w / 2, h / 2); });
+    lab.mesh.visible = false; lab.mesh.userData.keep = true; lab.mesh.material.side = THREE.DoubleSide;
+    blinds[id] = [bm, lab.mesh];
+    // mobilier
+    rug(-19.2, zm, 3.2, len - 0.9, (g, w, h) => { g.fillStyle = cap === 2 ? '#F3E6EE' : '#E4E9FB'; g.fillRect(0, 0, w, h); noise(g, w, h, 10); g.strokeStyle = cap === 2 ? BRAND.rose : BRAND.blue; g.lineWidth = 6; g.strokeRect(12, 12, w - 24, h - 24); });
+    makeTV('tv-' + id, id, -21.33, 1.6, zm, Math.PI / 2, 1.9, 1.07, r.short, 'Partage ton écran');
+    if (cap === 2) {
+      roundTable(-19.2, zm, 0.42, 0.72, M.white());
+      armchair(-20.3, zm, Math.PI / 2, lam(BRAND.navy, 0.95), id, id);
+      armchair(-18.1, zm, -Math.PI / 2, lam(BRAND.rose, 0.95), id, id);
+      laptop(-19.25, 0.72, zm - 0.12, Math.PI / 2); mug(-19.0, 0.72, zm + 0.22, BRAND.blue);
+    } else {
+      roundTable(-19.2, zm, 0.6, 0.74, M.oakLight());
+      for (let k = 0; k < 3; k++) { const a = Math.PI + (k - 1) * 2.1; const cx = -19.2 + Math.cos(a) * 1.05, cz = zm + Math.sin(a) * 1.05; chair(cx, cz, Math.atan2(-Math.cos(a), -Math.sin(a)), k === 1 ? BRAND.rose : BRAND.blue, id, id); }
+      laptop(-19.45, 0.74, zm + 0.1, Math.PI / 2); notebook(-18.95, 0.74, zm - 0.25, 0.3, BRAND.rose); mug(-18.9, 0.74, zm + 0.3);
+    }
+    plant(-21.0, r.z1 - 0.45, 0.6, id === 'bulle2' || id === 'bulle4' ? 'palm' : 'snake', cap === 2 ? BRAND.rose : BRAND.navy);
+    wallLight(-21.37, 2.3, r.z0 + 0.5, Math.PI / 2, '#FFE6F1');
+  }
+  function setBlind(id, on) { for (const m of blinds[id] || []) m.visible = on; }
+  // couloir des bulles
+  for (const z of [3, 9.6, 15.2]) plant(-14.75, z, 0.55, 'snake', '#6A3FB5');
+  bench(-14.7, 6.3, -Math.PI / 2, 'attente-bulles');
+
   // ===================== ACCESSOIRES =====================
   vase(-9.95, 0.4, 7.75); notebook(-9.3, 0.4, 8.3, 0.4, BRAND.rose);
   laptop(7.3, 1.05, 9.6, Math.PI); mug(5.9, 1.05, 9.45); vase(8.4, 1.05, 9.75, BRAND.blue);
@@ -788,7 +895,7 @@ export function buildWorld(scene) {
   notebook(-8.4, 0.76, -7.2, 0.2); notebook(-9.4, 0.76, -5.95, -0.3, BRAND.rose);
   mug(-7.5, 0.76, -7.25, BRAND.blue); mug(-10.7, 0.76, -5.9); mug(-6.0, 0.76, -7.0, BRAND.navy);
   bottle(-8.0, 0.76, -6.35); bottle(-8.85, 0.76, -6.6);
-  mug(-8.95, 0.79, -25.05); notebook(-7.2, 0.79, -25.0, 0.15, BRAND.rose); bin(-12.6, -26.9);
+  bin(-12.6, -26.9); mug(-10.1, 0.79, -21.8); mug(-6.4, 0.79, -19.2, BRAND.blue); notebook(-8.2, 0.79, -21.7, 0.2, BRAND.rose);
   cyl(W, 0.012, 0.012, 0.3, M.black(), 18.45, 1.8, -19.05, 6); { const mc = new THREE.Mesh(new THREE.SphereGeometry(0.035, 8, 6), M.black()); mc.position.set(18.45, 2.12, -19.05); W.add(mc); }
   bottle(18.7, 1.8, -18.85);
 
@@ -805,7 +912,7 @@ export function buildWorld(scene) {
   addCol(I.x0 - 6, I.x0 + 0.5, I.z0 - 6, I.z1 + 6); addCol(I.x1 - 0.5, I.x1 + 6, I.z0 - 6, I.z1 + 6);
   addCol(I.x0 - 6, I.x1 + 6, I.z0 - 6, I.z0 + 0.5); addCol(I.x0 - 6, I.x1 + 6, I.z1 - 0.5, I.z1 + 6);
 
-  const inBuilding = (x, z, m = 0.6) => (x > -14 - m && x < 14 + m && z > -28 - m && z < 16 + m) || (x > 2 - m && x < 22 + m && z > -28 - m && z < -10 + m);
+  const inBuilding = (x, z, m = 0.6) => (x > -14 - m && x < 14 + m && z > -28 - m && z < 16 + m) || (x > 2 - m && x < 22 + m && z > -28 - m && z < -10 + m) || (x > -21.5 - m && x < -14 && z > 0 - m && z < 16 + m);
   const inDeck = (x, z, m = 0.4) => x > DECK.x0 - m && x < DECK.x1 + m && z > DECK.z0 - m && z < DECK.z1 + m;
   const nearPath = (x, z) => (Math.abs(x) < 1.6 && z > 15 && z < 26.5) || (z > 18 && z < 20.2 && x > -1 && x < 20) || (x > 17.2 && x < 19.4 && z > 14 && z < 20);
   const free = (x, z) => !inBuilding(x, z) && !inDeck(x, z) && !nearPath(x, z);
@@ -862,7 +969,7 @@ export function buildWorld(scene) {
     for (const sx of [-0.7, 0.7]) { box(g, 0.06, 0.42, 0.45, M.black(), sx, -0.03, 0, 0.015); box(g, 0.06, 0.5, 0.06, M.black(), sx, 0.39, -0.22, 0.015); }
     for (let i = 0; i < 4; i++) box(g, 1.7, 0.04, 0.1, M.oak(), 0, 0.39, -0.17 + i * 0.12, 0.012);
     for (let i = 0; i < 2; i++) box(g, 1.7, 0.1, 0.035, M.oak(), 0, 0.55 + i * 0.16, -0.24, 0.012);
-    for (const o of [-0.45, 0.45]) { const [dx, dz] = rotXZ(o, 0.05, ry); seats.push({ id: `${group}-${seats.length}`, x: x + dx, z: z + dz, y: 0.45, ry, group, zone: 'jardin', kind: 'sofa' }); }
+    for (const o of [-0.45, 0.45]) { const [dx, dz] = rotXZ(o, 0.05, ry); seats.push({ id: `${group}-${seats.length}`, x: x + dx, z: z + dz, y: 0.45, ry, group, zone: zoneAt(x + dx, z + dz), kind: 'sofa' }); }
     const sw = Math.abs(Math.cos(ry)) > 0.5 ? [0.85, 0.28] : [0.28, 0.85]; addCol(x - sw[0], x + sw[0], z - sw[1], z + sw[1]);
   }
   function lampPost(x, z) {
@@ -922,19 +1029,20 @@ export function buildWorld(scene) {
 
   // Arbres en périphérie
   const treeSpots = [
-    [-18.5, 22, 1.1, 'round'], [-19.5, 14, 1.2, 'birch'], [-18, 8, 1, 'round'], [-19.8, 1, 1.3, 'conifer'], [-18.2, -6, 1.1, 'round'], [-19.6, -13, 1.2, 'birch'],
+    [-18.5, 22, 1.1, 'round'], [-26, 14, 1.2, 'birch'], [-25.5, 7, 1, 'round'], [-27, 0, 1.3, 'conifer'], [-26.5, -9, 1.1, 'round'], [-27.2, -19, 1.2, 'conifer'], [-25.8, -31, 1.1, 'birch'], [-27.5, 20, 1.2, 'conifer'], [-24.5, 24, 1, 'round'], [-18.2, -6, 1.1, 'round'], [-19.6, -13, 1.2, 'birch'],
     [-18.4, -20, 1.2, 'conifer'], [-19.3, -27, 1.1, 'round'], [-18, -33, 1.2, 'conifer'], [-12, -32.5, 1, 'round'], [-5, -33.5, 1.3, 'conifer'], [2, -32.4, 1.1, 'birch'],
     [8, -33.6, 1.2, 'round'], [14.5, -32.6, 1.1, 'conifer'], [21, -33.4, 1.2, 'round'], [27, -32, 1.1, 'conifer'], [26.5, -25, 1.2, 'round'], [27.4, -17, 1.1, 'birch'],
     [26.4, -9, 1.2, 'conifer'], [27.6, -2, 1, 'round'], [27.6, 7, 1.1, 'birch'], [27.4, 15, 1.2, 'round'], [26, 22.6, 1.3, 'round'], [18.6, -6.8, 0.9, 'birch'], [11, 23.6, 1, 'birch'], [-11.5, 23.4, 1.1, 'round'],
   ];
   for (const [tx, tz, ts, tt] of treeSpots) tree(tx, tz, ts, tt);
   // pique-nique ouest
-  table(-17.6, 4.2, 2, 0.9, 0.76, M.oak(), M.oak()); bench(-17.6, 3.2, 0, 'piquenique'); bench(-17.6, 5.2, Math.PI, 'piquenique');
+  table(-25.2, -3.5, 2, 0.9, 0.76, M.oak(), M.oak()); bench(-25.2, -4.5, 0, 'piquenique'); bench(-25.2, -2.5, Math.PI, 'piquenique');
   // jardin zen (entre dressing et amphi)
   for (const [rx, rz, rs] of [[15, -7.5, 1.2], [16.2, -6.8, 0.7], [20.5, -3, 1], [13.5, -2.4, 0.6]]) rock(rx, rz, rs);
   bench(17, -2.5, 0, 'zen');
   // buissons le long des façades
-  for (let z = -26; z <= 14; z += 2.6) { if (z > -1 && z < 3) continue; bush(-15.1, z, 0.9, z % 2 ? BRAND.rose : null); }
+  for (let z = -26; z <= -2; z += 2.6) bush(-15.1, z, 0.9, z % 2 ? BRAND.rose : null);
+  for (let z = 1.2; z <= 15; z += 2.4) bush(-22.6, z, 0.9, Math.round(z) % 2 ? '#ffffff' : BRAND.rose);
   for (let x = -12; x <= 20; x += 2.8) bush(x, -29.1, 0.9, Math.round(x) % 3 === 0 ? '#ffffff' : null);
   for (let z = -26; z <= -11; z += 2.6) bush(23.1, z, 0.9, BRAND.blue);
   // rochers, herbes, fleurs
@@ -991,7 +1099,7 @@ export function buildWorld(scene) {
 
   function redrawSigns() { for (const r of redrawers) r(); for (const s of Object.values(doorSigns)) s._k = null; }
 
-  return { group: W, glassMat, glassClear, colliders, seats, tvs, board, drawBoard, fadeables, updateDoorSigns, setOnAir, amphiTV, dressing, callSeat, redrawSigns, lights };
+  return { group: W, drawWins, winsSpot, WIN_TYPES, bulleDoors, setBlind, setBeacon, glassMat, glassClear, colliders, seats, tvs, board, drawBoard, fadeables, updateDoorSigns, setOnAir, amphiTV, dressing, callSeat, redrawSigns, lights };
 }
 
 // Collision cercle / AABB

@@ -70,7 +70,7 @@ export class SpatialAudio {
 }
 
 // Règles de volume entre "moi" (écouteur) et "lui" (orateur)
-const OPEN = new Set(['accueil', 'couloir', 'dehors', 'jardin']);
+const OPEN = new Set(['accueil', 'couloir', 'dehors', 'jardin', 'bulles']);
 const fall = (d, near, far) => (d <= near ? 1 : d >= far ? 0 : Math.pow(1 - (d - near) / (far - near), 1.6));
 
 export function computeGain(me, o, d) {
@@ -87,7 +87,7 @@ export function computeGain(me, o, d) {
     case 'amphi':
       if (o.st) return 1;                              // orateur sur scène
       return fall(d, 1.5, 5);
-    case 'reunion': case 'dressing':
+    case 'reunion': case 'dressing': case 'bulle1': case 'bulle2': case 'bulle3': case 'bulle4': case 'bulle5':
       return 1;                                        // toute la pièce
     default:
       if (me.sg && me.sg === o.sg) return 1;           // même canapé / même table

@@ -53,6 +53,8 @@
   #chatLog { height:160px; overflow-y:auto; font-size:13px; line-height:1.45; padding-right:4px; }
   #chatLog .m b { color:var(--navy); font-weight:700; }
   #chatLog .m.sys { color:var(--mut); font-style:italic; }
+  #chatLog .m.knock { background:#EFEAF8; border-left:4px solid #6A3FB5; border-radius:8px; padding:6px 8px; margin:4px 0; }
+  #chatLog .m.knock button { padding:3px 10px; font-size:12px; margin-left:6px; background:#6A3FB5; }
   #chatLog .m.tip { background:#FDEAF3; border-radius:8px; padding:2px 6px; margin:2px 0; }
   #chatForm { display:flex; gap:6px; margin-top:8px; } #chatInput { flex:1; min-width:0; }
   #side { position:absolute; right:16px; top:248px; width:min(350px, 32vw); padding:16px 18px; max-height:calc(100vh - 350px); overflow-y:auto; }
@@ -83,6 +85,9 @@
   #modal { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); padding:20px 22px; width:min(420px, 92vw); z-index:20; }
   #modal h3 { font-size:17px; font-weight:800; color:var(--navy); margin:0 0 12px; }
   #noteText { width:100%; margin-bottom:10px; }
+  #screenView { position:absolute; inset:24px 24px 90px 24px; z-index:30; background:#0d0f24; border-radius:16px; box-shadow:0 20px 60px rgba(0,0,0,.45); display:flex; flex-direction:column; overflow:hidden; }
+  #screenView .svBar { display:flex; align-items:center; gap:8px; padding:10px 14px; color:#fff; font-weight:600; background:var(--navy); }
+  #screenView video { flex:1; width:100%; min-height:0; object-fit:contain; background:#000; }
   @media (max-width: 900px) { #side { top:auto; bottom:250px; } #chat { width:calc(100vw - 32px); } #chatLog { height:90px; } #actions { bottom:250px; } #hint { bottom:300px; } }
 </style>
 </head>
@@ -117,6 +122,7 @@
   <div id="actions" class="panel">
     <button id="micBtn" title="Micro (M)">🎙 Micro</button>
     <span id="ctxActions" style="display:flex;gap:8px"></span>
+    <button id="winsBtn" class="ghost" title="Tableau des victoires">🏆 Victoires</button>
     <button id="helpBtn" class="ghost" title="Aide (H)">?</button>
   </div>
   <div id="chat" class="panel">
@@ -141,6 +147,10 @@
     <button id="helpClose">OK</button>
   </div>
   <div id="modal" class="panel hidden"></div>
+  <div id="screenView" class="hidden">
+    <div class="svBar"><span id="svTitle">Écran partagé</span><span style="flex:1"></span><button id="svFull" class="ghost">⛶ Plein écran</button><button id="svClose">✕ Fermer (Échap)</button></div>
+    <video id="svVideo" autoplay playsinline muted></video>
+  </div>
 </div>
 
 <script src="config.js"></script>

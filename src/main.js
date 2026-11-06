@@ -1,6 +1,6 @@
 // Espace virtuel Work&You — POC
 import * as THREE from 'three';
-import { buildWorld, BRAND, ROOMS, ENCLOSED, zoneAt, heightAt, onStage, collide, drawTextCanvas, FONT_TITLE, FONT_TEXT } from './world.js';
+import { buildWorld, BRAND, BULLES, ROOMS, ENCLOSED, zoneAt, heightAt, onStage, collide, drawTextCanvas, FONT_TITLE, FONT_TEXT } from './world.js';
 import { buildAvatar, applyLook, animateAvatar, makeLabel, normLook, randomLook, lookKey, PALETTE, OPTIONS, SLIDERS, DEFAULT_LOOK } from './avatar.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { SpatialAudio, computeGain } from './audio.js';
@@ -41,7 +41,7 @@ scene.add(new THREE.HemisphereLight('#FFFFFF', '#B9BEDA', 0.9));
 const sun = new THREE.DirectionalLight('#FFF1DF', 2.3);
 sun.position.set(18, 34, 14); sun.target.position.set(4, 0, -6);
 sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048);
-Object.assign(sun.shadow.camera, { left: -34, right: 34, top: 34, bottom: -34, near: 5, far: 100 });
+Object.assign(sun.shadow.camera, { left: -38, right: 38, top: 36, bottom: -36, near: 5, far: 110 });
 sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.03; sun.shadow.radius = 3;
 scene.add(sun, sun.target);
 // Qualité adaptative : on baisse la résolution puis l'effet verre si le PC rame
@@ -79,10 +79,12 @@ const ME = {
   id: 'moi', name: '', email: '', token: '', look: normLook(store.get('wy-look3', null) || randomLook()),
   x: (Math.random() - 0.5) * 4, y: 0, z: 12.5, r: Math.PI, seat: null,
   zone: 'accueil', micOn: true, visio: false, whisper: false, talking: false, share: null, joinedAt: Date.now(),
+  calling: false, queue: null, lock: null,
 };
 let meAv = null, meLabel = null, inGame = false, solo = false, net = null, audio = null;
 const remotes = new Map();
 let notes = [];
+let wins = store.get('wy-wins', []);
 let chatMsgs = [];
 let agenda = demoAgenda(), agendaReal = false;
 let editorOpen = false;
@@ -95,7 +97,7 @@ function myState() {
     n: ME.name, l: ME.look, x: +ME.x.toFixed(2), y: +ME.y.toFixed(2), z: +ME.z.toFixed(2), r: +ME.r.toFixed(2),
     seat: seat?.id || null, sg: seat?.group || null, zone: ME.zone,
     mic: !!(audio?.hasMic && ME.micOn), tk: ME.talking, vi: ME.visio, wh: ME.whisper,
-    cd: seat?.kind === 'callDesk', st: onStage(ME.x, ME.z), sh: ME.share, j: ME.joinedAt,
+    cd: !!ME.calling, q: ME.queue, lk: ME.lock && ME.zone === ME.lock ? ME.lock : null, st: onStage(ME.x, ME.z), sh: ME.share, j: ME.joinedAt,
   };
 }
 
@@ -143,6 +145,7 @@ async function enter(user) {
     try {
       setStatus('Connexion au réseau…');
       net = new Net({ cfg: CFG, peerOpts, space: SPACE, auth: { token: ME.token }, localStream: audio.localStream, getState: myState, on: netHandlers() });
+      net.wins = wins.slice();
       await net.start();
     } catch (e) {
       console.warn(e); net = null; goSolo('Connexion P2P impossible : mode solo');
@@ -152,6 +155,7 @@ async function enter(user) {
   if (!audio.hasMic && !solo) toast('Micro non disponible : tu peux écouter, pas parler');
   onZoneChange();
   drawAmphiScreen();
+  world.drawWins(wins);
 }
 function goSolo(msg) { solo = true; setStatus(msg); spawnBots(); }
 function setStatus(s) { $('netStatus').textContent = s; }
@@ -170,6 +174,9 @@ function netHandlers() {
       else if (kind === 'screen') { const tv = world.tvs[meta.tv]; if (tv && tv.sharer === id) tv.clear(); }
     },
     chat: (d) => addChat({ from: d.from, text: d.text, zone: d.zone, ts: d.ts, mine: d.fid === net?.myId }),
+    knock: (d) => onKnock(d),
+    wins: (list, d) => onWins(list, d),
+    admit: (d) => onAdmit(d),
     notes: (n) => { notes = n.slice(); world.drawBoard(notes); },
     denied: (reason) => { toast('Accès refusé : ' + reason, 8000); setStatus('Accès refusé (' + reason + ')'); },
     shareEnded: () => { if (ME.share) { world.tvs[ME.share]?.clear(); ME.share = null; renderActions(); } },
@@ -253,7 +260,7 @@ addEventListener('keydown', (e) => {
   else if (e.key === 'Enter') { e.preventDefault(); $('chatInput').focus(); }
   else if (e.code === 'KeyH') $('help').classList.toggle('hidden');
   else if (e.code === 'KeyP' && !e.repeat) { PIX = PIX >= 3 ? 1 : PIX + 1; store.set('wy-pix2', PIX); resize(); toast(PIX === 1 ? 'Rendu HD' : 'Mode rétro pixel ×' + PIX); }
-  else if (e.key === 'Escape') { closeModal(); $('help').classList.add('hidden'); if (editorOpen) closeEditor(); }
+  else if (e.key === 'Escape') { closeScreen(); closeModal(); $('help').classList.add('hidden'); if (editorOpen) closeEditor(); }
   if (e.code === 'KeyV') ME.whisper = !!(ME.micOn && audio?.hasMic);
   if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) e.preventDefault();
 });
@@ -269,6 +276,7 @@ canvas.addEventListener('pointermove', (e) => {
 canvas.addEventListener('pointerup', () => { drag = null; });
 canvas.addEventListener('wheel', (e) => { cam.dist = Math.max(4.5, Math.min(22, cam.dist + Math.sign(e.deltaY) * 1.1)); e.preventDefault(); }, { passive: false });
 $('micBtn').onclick = toggleMic;
+$('winsBtn').onclick = () => (winsOpen ? closeModal() : openWins());
 $('helpBtn').onclick = () => $('help').classList.toggle('hidden');
 $('helpClose').onclick = () => $('help').classList.add('hidden');
 function toggleMic() { ME.micOn = !ME.micOn; updateMicBtn(); toast(ME.micOn ? 'Micro activé' : 'Micro coupé'); }
@@ -277,6 +285,60 @@ function updateMicBtn() {
   if (!audio?.hasMic) { b.textContent = solo ? '🎙 (aperçu)' : '🎙 Indispo'; b.classList.add('off'); return; }
   b.textContent = ME.micOn ? '🎙 Micro' : '🔇 Coupé'; b.classList.toggle('off', !ME.micOn);
 }
+
+// ---------------- Bulles : fermeture, frapper ----------------
+const admitted = {}; // salle -> date limite d'accès accordé
+function lockedRooms() {
+  const L = {};
+  if (ME.lock && ME.zone === ME.lock) L[ME.lock] = true;
+  for (const r of remotes.values()) if (r.s.lk && r.s.zone === r.s.lk) L[r.s.lk] = true;
+  return L;
+}
+function activeColliders() {
+  const L = lockedRooms(), extra = [];
+  for (const id of BULLES) if (L[id] && ME.zone !== id && !((admitted[id] || 0) > Date.now())) extra.push(world.bulleDoors[id].box);
+  return extra.length ? world.colliders.concat(extra) : world.colliders;
+}
+function nearLockedDoor() {
+  if (ME.zone !== 'bulles') return null;
+  const L = lockedRooms();
+  for (const id of BULLES) { const d = world.bulleDoors[id]; if (L[id] && Math.hypot(d.x - ME.x, d.z - ME.z) < 2.2 && !((admitted[id] || 0) > Date.now())) return id; }
+  return null;
+}
+let lastKnock = 0;
+function knock(room) {
+  if (Date.now() - lastKnock < 5000) { toast('Patiente un peu avant de frapper à nouveau'); return; }
+  lastKnock = Date.now();
+  if (!net || solo) { toast('Frapper fonctionne en multijoueur'); return; }
+  net.send({ t: 'knock', room });
+  toast(`Tu as frappé à la porte de la ${ROOMS[room].short.toLowerCase()} 🚪`);
+}
+function ding(kind = 'knock') {
+  try {
+    const ctx = audio?.ctx || new (window.AudioContext || window.webkitAudioContext)();
+    const notes = kind === 'knock' ? [[660, 0], [880, 0.14]] : [[523, 0], [659, 0.12], [784, 0.24]];
+    for (const [f, t] of notes) {
+      const o = ctx.createOscillator(), g = ctx.createGain(); o.type = 'sine'; o.frequency.value = f;
+      g.gain.setValueAtTime(0, ctx.currentTime + t); g.gain.linearRampToValueAtTime(0.25, ctx.currentTime + t + 0.02); g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + t + 0.35);
+      o.connect(g).connect(ctx.destination); o.start(ctx.currentTime + t); o.stop(ctx.currentTime + t + 0.4);
+    }
+  } catch {}
+}
+function onKnock(d) {
+  if (ME.zone !== d.room) return;
+  ding('knock');
+  addChat({ knock: true, from: d.from, fid: d.fid, room: d.room, zone: d.room, ts: d.ts });
+  toast(`🚪 ${d.from} frappe à la porte`, 4000);
+}
+function onAdmit(d) {
+  if (d.who === net?.myId) { admitted[d.room] = Date.now() + 25000; ding('ok'); toast(`✅ ${d.from} t'ouvre la porte, tu peux entrer`, 5000); }
+  else if (ME.zone === d.room) addChat({ sys: true, text: `${d.from} a ouvert à ${d.whoName || 'un collègue'}`, zone: d.room });
+}
+$('chatLog').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-admit]'); if (!b || !net) return;
+  net.send({ t: 'admit', room: b.dataset.room, who: b.dataset.admit, whoName: b.dataset.name });
+  b.disabled = true; b.textContent = 'Ouvert ✔';
+});
 
 // ---------------- Interactions ----------------
 function occupiedSeats() { const s = new Set(); for (const r of remotes.values()) if (r.s.seat) s.add(r.s.seat); return s; }
@@ -301,17 +363,20 @@ function nearTV() {
 }
 function sit(seat) {
   ME.seat = seat; ME.x = seat.x; ME.z = seat.z; ME.r = seat.ry;
-  if (seat.kind === 'callDesk') sysMsg('Tu es au poste d\'appel : la salle t\'entend, tu ne l\'entends pas.');
+  if (seat.kind === 'prospect') renderSide(true);
 }
 function stand() {
   const s = ME.seat; if (!s) return; ME.seat = null;
+  if (ME.calling || ME.queue) { ME.calling = false; ME.queue = null; renderSide(true); }
   ME.x += Math.sin(s.ry) * 0.7; ME.z += Math.cos(s.ry) * 0.7;
   collide(ME, 0.32, world.colliders);
 }
 function interact() {
   if (editorOpen) return;
+  const ld = nearLockedDoor(); if (ld) { knock(ld); return; }
   if (ME.seat) { stand(); return; }
   if (nearMirror()) { openEditor(); return; }
+  if (nearWins()) { openWins(); return; }
   if (nearBoard()) { openNoteModal(); return; }
   const s = nearestSeat(); if (s) sit(s);
 }
@@ -334,7 +399,7 @@ function updateMe(dt) {
     const dx = ix * cy + iz * sy, dz = -ix * sy + iz * cy;
     speed = keys.has('ShiftLeft') || keys.has('ShiftRight') ? 6 : 3.6;
     ME.x += dx * speed * dt; ME.z += dz * speed * dt;
-    collide(ME, 0.32, world.colliders);
+    collide(ME, 0.32, activeColliders());
     const target = Math.atan2(dx, dz);
     let diff = target - ME.r; diff = Math.atan2(Math.sin(diff), Math.cos(diff));
     ME.r += diff * Math.min(1, dt * 14);
@@ -437,7 +502,7 @@ function renderSide(force) {
   const el = $('side'); const z = ME.zone;
   const caller = callerName();
   const { cur, next } = currentAndNext(agenda);
-  const key = [z, !!ME.seat, ME.seat?.kind, caller, ME.visio, editorOpen, agendaReal, cur?.title, next.length].join('|');
+  const key = [z, !!ME.seat, ME.seat?.kind, caller, ME.calling, ME.queue, ME.lock, JSON.stringify(lockedRooms()), queueList().join(), ME.visio, editorOpen, agendaReal, cur?.title, next.length].join('|');
   if (key === sideKey && !force) return; sideKey = key;
   if (editorOpen) return renderEditor();
   let h = '';
@@ -452,9 +517,21 @@ function renderSide(force) {
     h += `<p style="color:var(--mut)">Monte sur la scène pour parler à toute la salle et partager ton écran sur le grand écran.</p>`;
   } else if (z === 'prospection') {
     h += `<h3>PROSPECTION</h3>`;
-    if (ME.seat?.kind === 'callDesk') h += `<p>🔴 <b>Tu es au poste d'appel.</b></p><p>Mets ton téléphone sur haut-parleur près de ton micro : toute la salle entend l'appel.</p><p>Tu n'entends pas la salle (le client non plus). Les conseils arrivent dans le chat ↙</p><p style="color:var(--mut)">⚠️ Préviens ton interlocuteur que des collègues écoutent.</p>`;
-    else if (caller) h += `<p>🎧 <b>${esc(caller)}</b> est en appel.</p><p>Tu l'entends, il ne t'entend pas. Écris tes conseils dans le chat de la pièce ↙</p>`;
-    else h += `<p>Assieds-toi au <b>poste d'appel</b> (chaise rouge, touche E) pour passer un appel devant l'équipe.</p><p style="color:var(--mut)">Les autres s'installent sur les chaises pour écouter et coacher par écrit.</p>`;
+    const seated = ME.seat?.kind === 'prospect';
+    const queue = queueList();
+    if (ME.calling) h += `<p>🔴 <b>Tu es en appel.</b> Téléphone sur haut-parleur près de ton micro : toute la table t'entend.</p><p>Tu n'entends pas la table (ton client non plus). Les conseils arrivent dans le chat ↙</p><p><button id="callBtn" class="red">⏹ Terminer mon appel</button></p><p style="color:var(--mut)">⚠️ Préviens ton interlocuteur que des collègues écoutent.</p>`;
+    else if (caller) h += `<p>🎧 <b>${esc(caller)}</b> est en appel. Tu l'entends, il ne t'entend pas : coache-le par écrit dans le chat ↙</p>` + (seated ? `<p><button id="queueBtn" class="${ME.queue ? 'on' : 'alt'}">${ME.queue ? '✋ Inscrit·e dans la file' : '✋ Je passe après'}</button></p>` : '');
+    else if (seated) h += `<p>La ligne est libre.</p><p><button id="callBtn">📞 Lancer mon appel</button></p>`;
+    else h += `<p>Installe-toi à la <b>table d'appels</b> (touche E sur une chaise). Chacun appelle à son tour depuis sa place, les autres écoutent et coachent par écrit.</p>`;
+    if (queue.length) h += `<div class="row">File d'attente</div>` + queue.map((n, i) => `<div class="ev"><div class="tm">${i + 1}.</div>${esc(n)}</div>`).join('');
+  } else if (BULLES.includes(z)) {
+    const r = ROOMS[z], L = lockedRooms(), n = counts()[z] || 0;
+    h += `<h3>${esc(r.label)}</h3><p>Petite salle au calme : seules les personnes présentes vous entendent. Partage d'écran possible sur la télé.</p>`;
+    h += ME.lock === z ? `<p><button id="lockBtn" class="ghost">🔓 Rouvrir la bulle</button></p><p style="color:var(--mut)">Bulle fermée : les autres doivent frapper (E) pour entrer, tu recevras une notification.</p>`
+      : L[z] ? `<p>🔒 Bulle fermée par un collègue.</p>` : `<p><button id="lockBtn" class="alt">🔒 Fermer la bulle</button></p>`;
+    if (n > r.cap) h += `<p style="color:#E11D48">Vous êtes ${n} pour ${r.cap} places.</p>`;
+  } else if (z === 'bulles') {
+    h += `<h3>Espace bulles</h3><p>5 petites salles pour travailler à 2 ou 3 au calme (3 bulles pour 2, 2 bulles pour 3).</p><p>Une bulle fermée affiche « Ne pas déranger » : approche-toi de la porte et appuie sur <b>E</b> pour frapper.</p>`;
   } else if (z === 'dressing') {
     h += `<h3>DRESSING</h3><p>Monte sur le podium face au miroir et appuie sur <b>E</b> (ou le bouton ci-dessous) pour personnaliser ton avatar.</p><p><button id="openEd">👕 Personnaliser</button></p>`;
   } else if (z === 'reunion') {
@@ -465,13 +542,36 @@ function renderSide(force) {
   $('joinMeet') && ($('joinMeet').onclick = () => { ME.visio = true; setTimeout(() => renderSide(true), 50); toast('Meet s\'ouvre dans un nouvel onglet · mode visio activé'); });
   $('agendaBtn') && ($('agendaBtn').onclick = connectAgenda);
   $('openEd') && ($('openEd').onclick = openEditor);
+  $('callBtn') && ($('callBtn').onclick = () => { if (ME.calling) { ME.calling = false; } else { if (callerName()) { toast('Quelqu\'un est déjà en appel'); return; } ME.calling = true; ME.queue = null; } renderSide(true); });
+  $('queueBtn') && ($('queueBtn').onclick = () => { ME.queue = ME.queue ? null : Date.now(); renderSide(true); });
+  $('lockBtn') && ($('lockBtn').onclick = () => { ME.lock = ME.lock === ME.zone ? null : ME.zone; renderSide(true); toast(ME.lock ? '🔒 Bulle fermée' : '🔓 Bulle ouverte'); });
   $('noteBtn') && ($('noteBtn').onclick = openNoteModal);
   $('clearBtn') && ($('clearBtn').onclick = () => { if (net) net.clearNotes(); else { notes = []; world.drawBoard(notes); } });
 }
 function callerName() {
-  if (ME.seat?.kind === 'callDesk') return ME.name;
-  for (const r of remotes.values()) if (r.s.cd) return r.s.n;
+  if (ME.calling) return ME.name;
+  for (const r of remotes.values()) if (r.s.cd && r.s.zone === 'prospection') return r.s.n;
   return null;
+}
+function queueList() {
+  const q = [];
+  if (ME.queue) q.push([ME.queue, ME.name, 'moi']);
+  for (const r of remotes.values()) if (r.s.q && r.s.zone === 'prospection') q.push([r.s.q, r.s.n, r.id]);
+  return q.sort((a, b) => a[0] - b[0]).map((x) => x[1]);
+}
+let wasCaller = null;
+function prospectTick() {
+  const c = callerName();
+  if (wasCaller && !c && ME.queue) {
+    const q = [];
+    if (ME.queue) q.push([ME.queue, 'moi']);
+    for (const r of remotes.values()) if (r.s.q && r.s.zone === 'prospection') q.push([r.s.q, r.id]);
+    q.sort((a, b) => a[0] - b[0]);
+    if (q[0]?.[1] === 'moi') { ding('ok'); toast('📞 C\'est ton tour : lance ton appel !', 5000); }
+  }
+  wasCaller = c;
+  if (ME.zone !== 'prospection' && (ME.calling || ME.queue)) { ME.calling = false; ME.queue = null; }
+  if (ME.lock && ME.zone !== ME.lock) ME.lock = null;
 }
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
@@ -479,7 +579,8 @@ const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&
 let actKey = '';
 function renderActions(force) {
   const tv = nearTV();
-  const key = [tv?.id, ME.share].join('|');
+  const live = Object.values(world.tvs).filter((t) => t.zone === ME.zone && t.video);
+  const key = [tv?.id, ME.share, live.map((t) => t.id + t.sharer).join()].join('|');
   if (key === actKey && !force) return; actKey = key;
   const el = $('ctxActions'); el.innerHTML = '';
   if (ME.share) {
@@ -487,7 +588,32 @@ function renderActions(force) {
   } else if (tv) {
     const b = document.createElement('button'); b.className = 'alt'; b.textContent = '📺 Partager mon écran'; b.onclick = () => startShare(tv); el.appendChild(b);
   }
+  for (const t of live) {
+    if (t.sharer === 'moi') continue;
+    const b = document.createElement('button'); b.textContent = '🔍 Voir l\'écran en grand'; b.onclick = () => openScreen(t); el.appendChild(b);
+  }
 }
+// Visionneuse plein écran (résolution native du partage)
+let viewing = null;
+function openScreen(tv) {
+  if (!tv?.video) return;
+  viewing = tv;
+  const v = $('svVideo'); v.srcObject = tv.video.srcObject; v.play().catch(() => {});
+  const who = tv.sharer === 'moi' ? 'toi' : remotes.get(tv.sharer)?.s.n || 'un collègue';
+  $('svTitle').textContent = `Écran partagé par ${who}`;
+  $('screenView').classList.remove('hidden');
+}
+function closeScreen() { viewing = null; $('svVideo').srcObject = null; $('screenView').classList.add('hidden'); if (document.fullscreenElement) document.exitFullscreen().catch(() => {}); }
+$('svClose').onclick = closeScreen;
+$('svFull').onclick = () => { $('svVideo').requestFullscreen?.().catch(() => {}); };
+canvas.addEventListener('dblclick', (e) => {
+  const r = new THREE.Raycaster(); const m = new THREE.Vector2((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
+  r.setFromCamera(m, camera);
+  const tvs = Object.values(world.tvs).filter((t) => t.video);
+  const hit = r.intersectObjects(tvs.map((t) => t.screen), false)[0];
+  if (hit) openScreen(tvs.find((t) => t.screen === hit.object));
+});
+
 async function startShare(tv) {
   if (solo || !net) { toast('Partage d\'écran indisponible en mode solo / aperçu'); return; }
   if (tv.sharer && tv.sharer !== 'moi') { toast('Quelqu\'un partage déjà sur cet écran'); return; }
@@ -503,10 +629,12 @@ let hintKey = '';
 function renderHint() {
   let h = '';
   if (editorOpen) h = '<kbd>Échap</kbd> terminer';
-  else if (ME.seat) h = '<kbd>E</kbd> se lever' + (ME.seat.kind === 'callDesk' ? ' · 🔴 en appel' : '');
+  else if (ME.seat) h = '<kbd>E</kbd> se lever' + (ME.calling ? ' · 🔴 en appel' : '');
+  else if (nearLockedDoor()) h = '<kbd>E</kbd> frapper à la porte (bulle fermée)';
   else if (nearMirror()) h = '<kbd>E</kbd> personnaliser mon avatar';
+  else if (nearWins()) h = '<kbd>E</kbd> tableau des victoires 🏆';
   else if (nearBoard()) h = '<kbd>E</kbd> ajouter un post-it';
-  else { const s = nearestSeat(); if (s) h = '<kbd>E</kbd> ' + (s.kind === 'callDesk' ? 's\'installer au poste d\'appel' : 's\'asseoir'); }
+  else { const s = nearestSeat(); if (s) h = '<kbd>E</kbd> ' + (s.kind === 'prospect' ? 's\'installer à la table d\'appels' : 's\'asseoir'); }
   if (ME.whisper) h = '🤫 Tu chuchotes (voisins à ~3 m)';
   if (h === hintKey) return; hintKey = h;
   $('hint').innerHTML = h; $('hint').classList.toggle('hidden', !h);
@@ -528,8 +656,47 @@ function renderChat() {
   const sc = chatScope(ME.zone);
   const list = chatMsgs.filter((m) => m.sys || m.zone === sc).slice(-60);
   const tip = ME.zone === 'prospection';
-  $('chatLog').innerHTML = list.map((m) => m.sys ? `<div class="m sys">${esc(m.text)}</div>` : `<div class="m ${tip && !m.mine ? 'tip' : ''}"><b>${esc(m.from)}</b> ${esc(m.text)}</div>`).join('');
+  $('chatLog').innerHTML = list.map((m) => m.knock ? `<div class="m knock">🚪 <b>${esc(m.from)}</b> frappe à la porte <button data-admit="${esc(m.fid)}" data-room="${esc(m.room)}" data-name="${esc(m.from)}">Ouvrir</button></div>` : m.sys ? `<div class="m sys">${esc(m.text)}</div>` : `<div class="m ${tip && !m.mine ? 'tip' : ''}"><b>${esc(m.from)}</b> ${esc(m.text)}</div>`).join('');
   $('chatLog').scrollTop = 1e6;
+}
+
+// ---------------- Tableau des victoires ----------------
+const WIN_TYPES = Object.keys(world.WIN_TYPES);
+function onWins(list, d) {
+  wins = list.slice(); store.set('wy-wins', wins.slice(-80)); world.drawWins(wins);
+  if (d && d.fid !== net?.myId) {
+    const w = d.w; ding('ok');
+    toast(`🏆 ${w.who} : ${w.type} !`, 5000);
+    sysMsg(`🏆 ${w.who} — ${w.type} : ${w.text}`);
+  }
+  if (winsOpen) openWins();
+}
+let winsOpen = false;
+function nearWins() { return ME.zone === 'accueil' && Math.hypot(world.winsSpot.x - ME.x, world.winsSpot.z - ME.z) < 3.2; }
+function openWins() {
+  winsOpen = true;
+  const m = $('modal');
+  const list = wins.slice().reverse().slice(0, 30);
+  let type = m.dataset.type || WIN_TYPES[0];
+  m.innerHTML = `<h3>🏆 Tableau des victoires</h3>
+    <div class="row" style="color:var(--mut);font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Ta victoire</div>
+    <div id="winTypes">${WIN_TYPES.map((t) => `<span class="opt ${t === type ? 'sel' : ''}" data-wt="${esc(t)}">${world.WIN_TYPES[t][0]} ${esc(t)}</span>`).join('')}</div>
+    <input id="winText" maxlength="140" placeholder="Ex : Signature avec la société X pour 3 postes de commerciaux" autocomplete="off" style="width:100%;margin:10px 0">
+    <p style="display:flex;gap:8px;justify-content:flex-end;margin:0 0 12px"><button class="ghost" id="winClose">Fermer</button><button id="winOk">Publier 🎉</button></p>
+    <div style="max-height:40vh;overflow-y:auto">${list.length ? list.map((w) => `<div class="ev" style="border-color:${world.WIN_TYPES[w.type]?.[1] || '#3A8A5C'}"><div class="tm">${world.WIN_TYPES[w.type]?.[0] || '🏆'} ${esc(w.type)} · ${esc(w.who)} · ${new Date(w.ts).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}</div>${esc(w.text)}</div>`).join('') : '<p style="color:var(--mut)">Aucune victoire pour l\'instant.</p>'}</div>`;
+  m.style.width = 'min(560px, 92vw)';
+  m.classList.remove('hidden');
+  m.querySelectorAll('[data-wt]').forEach((n) => (n.onclick = () => { m.dataset.type = n.dataset.wt; m.querySelectorAll('[data-wt]').forEach((x) => x.classList.toggle('sel', x === n)); }));
+  const ok = () => {
+    const t = $('winText').value.trim(); if (!t) { $('winText').focus(); return; }
+    const w = { id: Math.random().toString(36).slice(2, 12), type: m.dataset.type || WIN_TYPES[0], text: t, who: ME.name, ts: Date.now() };
+    if (net && !solo) net.send({ t: 'win', w });
+    else onWins([...wins, w], null);
+    toast('🎉 Victoire publiée sur le tableau !');
+    $('winText').value = '';
+  };
+  $('winOk').onclick = ok; $('winClose').onclick = closeModal;
+  $('winText').addEventListener('keydown', (e) => { if (e.key === 'Enter') ok(); if (e.key === 'Escape') closeModal(); });
 }
 
 // ---------------- Post-it ----------------
@@ -550,7 +717,7 @@ function openNoteModal() {
   $('noteText').addEventListener('keydown', (e) => { if (e.key === 'Enter') ok(); if (e.key === 'Escape') closeModal(); });
   setTimeout(() => $('noteText').focus(), 30);
 }
-function closeModal() { $('modal').classList.add('hidden'); $('modal').innerHTML = ''; }
+function closeModal() { winsOpen = false; $('modal').style.width = ''; $('modal').classList.add('hidden'); $('modal').innerHTML = ''; }
 
 // ---------------- Dressing ----------------
 function openEditor() {
@@ -628,8 +795,8 @@ setInterval(() => { drawAmphiScreen(); if (ME.zone === 'amphi') renderSide(); },
 // ---------------- Mini-carte ----------------
 const mm = $('minimap').getContext('2d');
 function drawMinimap() {
-  const W = 200, H = 200, x0 = -23, z0 = -37, sc = 200 / 64;
-  const X = (x) => (x - x0) * sc + 16, Z = (z) => (z - z0) * sc;
+  const W = 200, H = 200, x0 = -31, z0 = -37, sc = 200 / 64;
+  const X = (x) => (x - x0) * sc + 4, Z = (z) => (z - z0) * sc;
   mm.fillStyle = '#ffffff'; mm.fillRect(0, 0, W, H);
   for (const [k, r] of Object.entries(ROOMS)) {
     mm.fillStyle = r.color + (k === ME.zone ? '66' : '22'); mm.fillRect(X(r.x0), Z(r.z0), (r.x1 - r.x0) * sc, (r.z1 - r.z0) * sc);
@@ -660,11 +827,15 @@ function frame() {
     slowT += dt;
     if (slowT > 0.5) {
       slowT = 0;
-      world.updateDoorSigns(counts());
-      world.setOnAir(callerName());
+      const LR = lockedRooms();
+      world.updateDoorSigns(counts(), LR);
+      for (const id of BULLES) world.setBlind(id, !!LR[id]);
+      world.setOnAir(callerName()); world.setBeacon(!!callerName());
+      prospectTick();
       renderSide(); renderActions();
       // nettoyer un écran si le partageur a arrêté
       for (const tv of Object.values(world.tvs)) if (tv.sharer && tv.sharer !== 'moi') { const r = remotes.get(tv.sharer); if (!r || r.s.sh !== tv.id) tv.clear(); }
+      if (viewing && (!viewing.video || viewing.zone !== ME.zone)) closeScreen();
       const n = (counts()[ME.zone] || 1);
       $('zoneInfo').textContent = `${n} personne${n > 1 ? 's' : ''} ici · ${remotes.size - bots.length + 1} en ligne`;
     }
