@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Espace Work&amp;You — POC</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap" rel="stylesheet">
+<style>
+  :root { --bg:#14182e; --bg2:#1d2342; --line:#2f3866; --y:#f2c14e; --t:#2bb3a3; --c:#ff6b5a; --txt:#e9ecf7; --mut:#9aa4b8; }
+  * { box-sizing: border-box; }
+  html, body { margin:0; height:100%; overflow:hidden; background:#0c0f20; color:var(--txt); font-family:'VT323', monospace; font-size:21px; }
+  #c { position:fixed; inset:0; width:100vw; height:100vh; image-rendering:pixelated; image-rendering:crisp-edges; display:block; }
+  .px { font-family:'Press Start 2P', monospace; }
+  .panel { background:rgba(20,24,46,.94); border:3px solid var(--line); box-shadow:0 0 0 3px #0c0f20, 6px 6px 0 rgba(0,0,0,.35); }
+  button, .btn { font-family:'VT323', monospace; font-size:21px; color:#14182e; background:var(--y); border:none; padding:6px 12px; cursor:pointer; box-shadow:inset -3px -3px 0 rgba(0,0,0,.25), inset 3px 3px 0 rgba(255,255,255,.35); text-decoration:none; display:inline-block; white-space:nowrap; }
+  button:hover, .btn:hover { filter:brightness(1.1); }
+  button:active, .btn:active { box-shadow:inset 3px 3px 0 rgba(0,0,0,.25); }
+  button.alt { background:var(--t); } button.red { background:var(--c); } button.ghost { background:#2f3866; color:var(--txt); }
+  button.on { background:#7CFC9a; }
+  input { font-family:'VT323', monospace; font-size:21px; background:#0c0f20; color:var(--txt); border:2px solid var(--line); padding:6px 8px; outline:none; }
+  input:focus { border-color:var(--y); }
+  .hidden { display:none !important; }
+
+  /* Écran de connexion */
+  #login { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; background:radial-gradient(ellipse at center, rgba(12,15,32,.35), rgba(12,15,32,.85)); z-index:50; }
+  #login .panel { width:min(560px, 92vw); padding:28px 30px; text-align:center; }
+  #login h1 { font-size:20px; line-height:1.6; margin:0 0 6px; color:var(--y); text-shadow:3px 3px 0 #000; }
+  #login .sub { color:var(--mut); margin-bottom:22px; }
+  #gbtn { display:flex; justify-content:center; min-height:44px; margin:10px 0; }
+  #testForm { display:flex; gap:8px; justify-content:center; margin-top:10px; }
+  #testForm input { width:230px; }
+  #loginMsg { min-height:24px; color:var(--c); margin-top:12px; }
+  #login .small { color:var(--mut); font-size:17px; margin-top:14px; line-height:1.15; }
+  .blink { animation: bl 1s steps(2) infinite; } @keyframes bl { 50% { opacity:0; } }
+
+  /* HUD */
+  #hud { position:fixed; inset:0; pointer-events:none; z-index:10; }
+  #hud > * { pointer-events:auto; }
+  #zoneBox { position:absolute; left:14px; top:14px; padding:10px 14px; min-width:250px; }
+  #zoneName { font-size:12px; color:var(--y); }
+  #zoneInfo { color:var(--mut); margin-top:6px; }
+  #netStatus { font-size:17px; color:var(--mut); margin-top:2px; }
+  #mmBox { position:absolute; right:14px; top:14px; padding:6px; }
+  #minimap { display:block; image-rendering:pixelated; }
+  #hint { position:absolute; left:50%; bottom:92px; transform:translateX(-50%); padding:6px 14px; white-space:nowrap; }
+  #hint kbd, .keys kbd { font-family:'Press Start 2P'; font-size:10px; background:var(--y); color:#14182e; padding:3px 6px; margin:0 3px; }
+  #actions { position:absolute; left:50%; bottom:22px; transform:translateX(-50%); display:flex; gap:8px; padding:8px; }
+  #chat { position:absolute; left:14px; bottom:22px; width:min(380px, 34vw); padding:8px; }
+  #chatTitle { font-size:9px; color:var(--y); margin-bottom:6px; }
+  #chatLog { height:170px; overflow-y:auto; font-size:19px; line-height:1.05; padding-right:4px; }
+  #chatLog .m b { color:var(--y); font-weight:normal; }
+  #chatLog .m.sys { color:var(--mut); font-style:italic; }
+  #chatLog .m.tip { color:#9ff0e4; }
+  #chatForm { display:flex; gap:6px; margin-top:6px; } #chatInput { flex:1; min-width:0; }
+  #side { position:absolute; right:14px; top:240px; width:min(360px, 32vw); padding:12px 14px; max-height:calc(100vh - 360px); overflow-y:auto; }
+  #side h3 { font-family:'Press Start 2P'; font-size:11px; color:var(--y); margin:0 0 10px; line-height:1.5; }
+  #side p { margin:6px 0; line-height:1.05; }
+  #side .ev { border-left:4px solid var(--t); padding:4px 8px; margin:6px 0; background:rgba(255,255,255,.03); }
+  #side .ev.cur { border-color:var(--c); }
+  #side .ev .tm { color:var(--mut); font-size:18px; }
+  #side .row { margin:10px 0 4px; color:var(--mut); font-size:18px; }
+  .sw { display:inline-block; width:26px; height:26px; margin:2px; border:3px solid transparent; cursor:pointer; vertical-align:middle; }
+  .sw.sel { border-color:#fff; outline:2px solid #000; }
+  .opt { display:inline-block; padding:3px 8px; margin:2px; background:#2f3866; cursor:pointer; font-size:19px; }
+  .opt.sel { background:var(--y); color:#14182e; }
+  #toast { position:absolute; left:50%; top:16px; transform:translateX(-50%); padding:8px 16px; transition:opacity .3s; opacity:0; pointer-events:none; }
+  #toast.show { opacity:1; }
+  #banner { position:absolute; left:50%; top:16px; transform:translateX(-50%); padding:8px 16px; border-color:var(--c); }
+  #help { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); padding:20px 24px; width:min(520px, 92vw); }
+  #help h3 { font-family:'Press Start 2P'; font-size:12px; color:var(--y); margin:0 0 12px; }
+  #help .keys div { margin:7px 0; }
+  #modal { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); padding:18px 20px; width:min(440px, 92vw); z-index:20; }
+  #modal h3 { font-family:'Press Start 2P'; font-size:11px; color:var(--y); margin:0 0 12px; }
+  #noteText { width:100%; margin-bottom:10px; }
+  #micBtn.off { background:var(--c); }
+  @media (max-width: 900px) { #side { top:auto; bottom:250px; } #chat { width:calc(100vw - 28px); } #chatLog { height:90px; } #actions { bottom:250px; } #hint { bottom:300px; } }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div id="login">
+  <div class="panel">
+    <h1 class="px">ESPACE<br>WORK&amp;YOU</h1>
+    <div class="sub">Le QG virtuel du réseau · POC</div>
+    <div id="gbtn"></div>
+    <form id="testForm" class="hidden">
+      <input id="testName" maxlength="20" placeholder="Ton prénom" autocomplete="off">
+      <button type="submit">Entrer ▶</button>
+    </form>
+    <div id="loginMsg"></div>
+    <div class="small" id="loginNote"></div>
+  </div>
+</div>
+
+<div id="hud" class="hidden">
+  <div id="zoneBox" class="panel">
+    <div id="zoneName" class="px">ACCUEIL</div>
+    <div id="zoneInfo"></div>
+    <div id="netStatus"></div>
+  </div>
+  <div id="mmBox" class="panel"><canvas id="minimap" width="200" height="200"></canvas></div>
+  <div id="side" class="panel hidden"></div>
+  <div id="hint" class="panel hidden"></div>
+  <div id="actions" class="panel">
+    <button id="micBtn" title="Micro (M)">🎙 Micro</button>
+    <span id="ctxActions" style="display:flex;gap:8px"></span>
+    <button id="helpBtn" class="ghost" title="Aide (H)">?</button>
+  </div>
+  <div id="chat" class="panel">
+    <div id="chatTitle" class="px">CHAT · ACCUEIL</div>
+    <div id="chatLog"></div>
+    <form id="chatForm"><input id="chatInput" maxlength="300" placeholder="Entrée pour écrire…" autocomplete="off"><button type="submit">↵</button></form>
+  </div>
+  <div id="toast" class="panel"></div>
+  <div id="banner" class="panel hidden"></div>
+  <div id="help" class="panel hidden">
+    <h3>COMMANDES</h3>
+    <div class="keys">
+      <div><kbd>Z Q S D</kbd>/<kbd>W A S D</kbd>/<kbd>flèches</kbd> se déplacer · <kbd>Maj</kbd> courir</div>
+      <div><kbd>Clic + glisser</kbd> tourner la caméra · <kbd>Molette</kbd> zoom</div>
+      <div><kbd>E</kbd> s'asseoir / se lever / interagir</div>
+      <div><kbd>M</kbd> couper / activer le micro</div>
+      <div><kbd>V</kbd> (maintenir) chuchoter : seuls tes voisins à ~3 m t'entendent</div>
+      <div><kbd>Entrée</kbd> écrire dans le chat de la pièce</div>
+      <div><kbd>P</kbd> changer la pixellisation · <kbd>H</kbd> cette aide</div>
+    </div>
+    <p style="color:var(--mut)">Les vitres du couloir isolent le son : dans une pièce, seules les personnes de la pièce t'entendent. Sur un canapé ou à une table, tout le groupe s'entend.</p>
+    <button id="helpClose">OK</button>
+  </div>
+  <div id="modal" class="panel hidden"></div>
+</div>
+
+<script src="config.js"></script>
+<script src="lib/peerjs.min.js"></script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script type="importmap">{ "imports": { "three": "./lib/three.module.min.js" } }</script>
+<script type="module" src="src/main.js"></script>
+</body>
+</html>
