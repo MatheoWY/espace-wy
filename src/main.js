@@ -41,7 +41,7 @@ scene.add(new THREE.HemisphereLight('#FFFFFF', '#B9BEDA', 0.9));
 const sun = new THREE.DirectionalLight('#FFF1DF', 2.3);
 sun.position.set(18, 34, 14); sun.target.position.set(4, 0, -6);
 sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048);
-Object.assign(sun.shadow.camera, { left: -30, right: 30, top: 30, bottom: -30, near: 5, far: 90 });
+Object.assign(sun.shadow.camera, { left: -34, right: 34, top: 34, bottom: -34, near: 5, far: 100 });
 sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.03; sun.shadow.radius = 3;
 scene.add(sun, sun.target);
 // Qualité adaptative : on baisse la résolution puis l'effet verre si le PC rame
@@ -202,15 +202,17 @@ const BOT_ROUTES = {
   prospection: { spine: [0, -20.5], out: [[-3.5, -20.5]], spots: [[-6, -16.5], [-11, -16.5], [-5, -23], [-12, -23.5]] },
   dressing: { spine: [0, -5], out: [[3.5, -5]], spots: [[8, -5], [6, -3], [10, -2]] },
   amphi: { spine: [0, -19], out: [[3.5, -19]], spots: [[16, -15], [16, -23], [5, -13], [5, -25]] },
+  jardin: { spine: [0, -1], out: [[0, 17.5], [0, 13], [0, 3]], spots: [[-4, 21], [4, 23.5], [[8, 19.1], [18.3, 19.1], [19.5, 9]], [[8, 19.1], [18.3, 19.1], [16.2, 13.5]], [-10, 20]] },
 };
 const bots = [];
 function spawnBots() {
   if (bots.length) return;
-  const names = ['Julie', 'Karim', 'Sophie', 'Lucas', 'Inès'];
+  const names = ['Julie', 'Karim', 'Sophie', 'Lucas', 'Inès', 'Hugo'];
   const rooms = Object.keys(BOT_ROUTES);
   names.forEach((n, i) => {
     const room = rooms[(i + 1) % rooms.length]; const sp = BOT_ROUTES[room].spots[i % BOT_ROUTES[room].spots.length];
-    const b = { id: 'bot-' + i, name: n + ' (bot)', room, x: sp[0], z: sp[1], path: [], wait: 2 + Math.random() * 6, look: randomLook() };
+    const p0 = Array.isArray(sp[0]) ? sp[sp.length - 1] : sp;
+    const b = { id: 'bot-' + i, name: n + ' (bot)', room, x: p0[0], z: p0[1], path: [], wait: 2 + Math.random() * 6, look: randomLook() };
     bots.push(b);
     upsertRemote(botState(b));
   });
@@ -224,7 +226,8 @@ function tickBots(dt) {
         const rooms = Object.keys(BOT_ROUTES); const to = rooms[Math.floor(Math.random() * rooms.length)];
         const A = BOT_ROUTES[b.room], B = BOT_ROUTES[to];
         const spot = B.spots[Math.floor(Math.random() * B.spots.length)];
-        b.path = to === b.room ? [spot] : [...A.out, A.spine, B.spine, ...B.out.slice().reverse(), spot];
+        const sp2 = Array.isArray(spot[0]) ? spot : [spot];
+        b.path = to === b.room ? sp2 : [...A.out, A.spine, B.spine, ...B.out.slice().reverse(), ...sp2];
         b.room = to; b.wait = 6 + Math.random() * 12;
       }
     } else {
@@ -421,7 +424,7 @@ function onZoneChange() {
   const room = ROOMS[ME.zone];
   $('zoneName').textContent = room ? room.label : 'Dehors';
   $('zoneName').style.color = room?.color || '#2E3484';
-  $('chatTitle').textContent = 'Chat · ' + (chatScope(ME.zone) === 'commun' ? 'Accueil & couloir' : room.label);
+  $('chatTitle').textContent = 'Chat · ' + (chatScope(ME.zone) === 'commun' ? 'Espaces communs' : room.label);
   if (ME.zone !== 'amphi' && ME.visio) { ME.visio = false; toast('Mode visio désactivé (tu as quitté l\'amphi)'); }
   if (ME.zone !== 'dressing' && editorOpen) closeEditor();
   renderChat(); renderSide(); renderActions();
@@ -614,8 +617,8 @@ setInterval(() => { drawAmphiScreen(); if (ME.zone === 'amphi') renderSide(); },
 // ---------------- Mini-carte ----------------
 const mm = $('minimap').getContext('2d');
 function drawMinimap() {
-  const W = 200, H = 200, x0 = -16, z0 = -30, sc = 200 / 48;
-  const X = (x) => (x - x0) * sc + 18, Z = (z) => (z - z0) * sc;
+  const W = 200, H = 200, x0 = -23, z0 = -37, sc = 200 / 64;
+  const X = (x) => (x - x0) * sc + 16, Z = (z) => (z - z0) * sc;
   mm.fillStyle = '#ffffff'; mm.fillRect(0, 0, W, H);
   for (const [k, r] of Object.entries(ROOMS)) {
     mm.fillStyle = r.color + (k === ME.zone ? '66' : '22'); mm.fillRect(X(r.x0), Z(r.z0), (r.x1 - r.x0) * sc, (r.z1 - r.z0) * sc);
@@ -665,4 +668,4 @@ requestAnimationFrame(frame);
 initLogin();
 
 // pour le débogage / tests
-window.__wy = { ME, remotes, world, renderer, scene, sun, get net() { return net; }, get solo() { return solo; }, get audio() { return audio; }, myState };
+window.__wy = { ME, remotes, world, renderer, scene, sun, cam, get net() { return net; }, get solo() { return solo; }, get audio() { return audio; }, myState };

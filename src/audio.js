@@ -70,7 +70,7 @@ export class SpatialAudio {
 }
 
 // Règles de volume entre "moi" (écouteur) et "lui" (orateur)
-const OPEN = new Set(['accueil', 'couloir', 'dehors']);
+const OPEN = new Set(['accueil', 'couloir', 'dehors', 'jardin']);
 const fall = (d, near, far) => (d <= near ? 1 : d >= far ? 0 : Math.pow(1 - (d - near) / (far - near), 1.6));
 
 export function computeGain(me, o, d) {
