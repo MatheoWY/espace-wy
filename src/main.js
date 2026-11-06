@@ -1,7 +1,8 @@
 // Espace virtuel Work&You — POC
 import * as THREE from 'three';
-import { buildWorld, ROOMS, ENCLOSED, zoneAt, heightAt, onStage, collide, drawTextCanvas, FONT_TITLE, FONT_TEXT } from './world.js';
-import { buildAvatar, applyLook, animateAvatar, makeLabel, normLook, PALETTE, HAIR_STYLES, ACCS, DEFAULT_LOOK } from './avatar.js';
+import { buildWorld, BRAND, ROOMS, ENCLOSED, zoneAt, heightAt, onStage, collide, drawTextCanvas, FONT_TITLE, FONT_TEXT } from './world.js';
+import { buildAvatar, applyLook, animateAvatar, makeLabel, normLook, randomLook, PALETTE, OPTIONS, L, DEFAULT_LOOK } from './avatar.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { SpatialAudio, computeGain } from './audio.js';
 import { waitForGis, renderGoogleButton } from './auth.js';
 import { demoAgenda, requestCalendarToken, fetchAgenda, currentAndNext, fmtTime, fmtDay } from './calendar.js';
@@ -11,6 +12,7 @@ const CFG = Object.assign({ ALLOWED_DOMAIN: 'workandyou.fr', ALLOW_TEST_MODE: tr
 const qs = new URLSearchParams(location.search);
 const IN_FRAME = (() => { try { return window.self !== window.top; } catch { return true; } })();
 const SOLO_FORCED = qs.has('solo') || IN_FRAME || !window.RTCPeerConnection || !window.Peer;
+const NORENDER = qs.has('norender'); // tests automatisés
 const SPACE = (qs.get('salle') || CFG.SPACE_ID).replace(/[^a-z0-9-]/gi, '').toLowerCase();
 const peerOpts = qs.get('peer') === 'local'
   ? { host: location.hostname, port: 9000, path: '/peer', secure: false }
@@ -23,25 +25,54 @@ const store = { get(k, d) { try { const v = localStorage.getItem(k); return v ? 
 
 // ---------------- Rendu ----------------
 const canvas = $('c');
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
-renderer.setPixelRatio(1);
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
 renderer.outputColorSpace = THREE.SRGBColorSpace;
-let PIX = store.get('wy-pix', 2);
+renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 0.98;
+renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+let PIX = store.get('wy-pix2', 1);
 const scene = new THREE.Scene();
-scene.background = new THREE.Color('#1b1f3b');
-scene.fog = new THREE.Fog('#1b1f3b', 32, 75);
-const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 200);
-scene.add(new THREE.HemisphereLight('#fff4e0', '#3a3f66', 1.5));
-const sun = new THREE.DirectionalLight('#ffe2b8', 1.6); sun.position.set(12, 30, 18); scene.add(sun);
-const fill = new THREE.DirectionalLight('#9ab8ff', 0.5); fill.position.set(-20, 15, -10); scene.add(fill);
+scene.background = new THREE.Color('#E7E9F5');
+scene.fog = new THREE.Fog('#E7E9F5', 45, 95);
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+scene.environmentIntensity = 0.45;
+const camera = new THREE.PerspectiveCamera(46, innerWidth / innerHeight, 0.1, 220);
+scene.add(new THREE.HemisphereLight('#FFFFFF', '#B9BEDA', 0.9));
+const sun = new THREE.DirectionalLight('#FFF1DF', 2.3);
+sun.position.set(18, 34, 14); sun.target.position.set(4, 0, -6);
+sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048);
+Object.assign(sun.shadow.camera, { left: -30, right: 30, top: 30, bottom: -30, near: 5, far: 90 });
+sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.03; sun.shadow.radius = 3;
+scene.add(sun, sun.target);
+// Qualité adaptative : on baisse la résolution puis l'effet verre si le PC rame
+let QL = 0; const QL_DPR = [Math.min(devicePixelRatio || 1, 1.75), 1, 0.8, 0.8, 0.65];
+const ecoGlass = new THREE.MeshStandardMaterial({ color: '#F4F6FF', transparent: true, opacity: 0.55, roughness: 0.25, metalness: 0 });
+function applyQuality() {
+  if (QL >= 2) { sun.shadow.mapSize.set(1024, 1024); sun.shadow.map?.dispose(); sun.shadow.map = null; }
+  if (QL >= 3 && world.glassMat !== ecoGlass) {
+    for (const f of world.fadeables) { const w = f.userData.wall; if (w?.glass && !w.faded) w.mesh.material = ecoGlass; }
+    world.glassMat = ecoGlass;
+  }
+  resize();
+}
+let perfT = 0, perfN = 0, perfWarm = 0;
+function perfTick(dt) {
+  if (!inGame || PIX > 1 || QL >= QL_DPR.length - 1 || qs.has('hd')) return;
+  perfWarm += dt; if (perfWarm < 3) return;
+  perfT += dt; perfN++;
+  if (perfT >= 2) { const fps = perfN / perfT; perfT = 0; perfN = 0; if (fps < 38) { QL++; applyQuality(); console.info('[qualité] niveau', QL, Math.round(fps) + ' fps'); } }
+}
 function resize() {
-  renderer.setSize(Math.max(1, Math.floor(innerWidth / PIX)), Math.max(1, Math.floor(innerHeight / PIX)), false);
+  const dpr = PIX === 1 ? QL_DPR[QL] : 1 / PIX;
+  renderer.setPixelRatio(dpr);
+  renderer.setSize(innerWidth, innerHeight, false);
+  canvas.classList.toggle('pix', PIX > 1);
   camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
 }
 addEventListener('resize', resize); resize();
 
 const world = buildWorld(scene);
-document.fonts?.load(`12px ${FONT_TITLE}`).then(() => document.fonts.load(`20px ${FONT_TEXT}`)).then(() => { world.redrawSigns(); drawAmphiScreen(); world.drawBoard(notes); }).catch(() => {});
+Promise.all(['800 40px Poppins', '700 40px Poppins', '600 40px Poppins', '500 40px Poppins'].map((f) => document.fonts?.load(f))).then(() => { world.redrawSigns(); drawAmphiScreen(); world.drawBoard(notes); }).catch(() => {});
 
 // ---------------- État local ----------------
 const ME = {
@@ -179,7 +210,7 @@ function spawnBots() {
   const rooms = Object.keys(BOT_ROUTES);
   names.forEach((n, i) => {
     const room = rooms[(i + 1) % rooms.length]; const sp = BOT_ROUTES[room].spots[i % BOT_ROUTES[room].spots.length];
-    const b = { id: 'bot-' + i, name: n + ' (bot)', room, x: sp[0], z: sp[1], path: [], wait: 2 + Math.random() * 6, look: [i % 6, i % 6, (i * 3) % 8, (i * 2 + 1) % 10, (i + 5) % 10, i % 5] };
+    const b = { id: 'bot-' + i, name: n + ' (bot)', room, x: sp[0], z: sp[1], path: [], wait: 2 + Math.random() * 6, look: randomLook() };
     bots.push(b);
     upsertRemote(botState(b));
   });
@@ -217,7 +248,7 @@ addEventListener('keydown', (e) => {
   else if (k === 'm' && !e.repeat) toggleMic();
   else if (e.key === 'Enter') { e.preventDefault(); $('chatInput').focus(); }
   else if (e.code === 'KeyH') $('help').classList.toggle('hidden');
-  else if (e.code === 'KeyP' && !e.repeat) { PIX = PIX >= 3 ? 1 : PIX + 1; store.set('wy-pix', PIX); resize(); toast('Pixellisation ×' + PIX); }
+  else if (e.code === 'KeyP' && !e.repeat) { PIX = PIX >= 3 ? 1 : PIX + 1; store.set('wy-pix2', PIX); resize(); toast(PIX === 1 ? 'Rendu HD' : 'Mode rétro pixel ×' + PIX); }
   else if (e.key === 'Escape') { closeModal(); $('help').classList.add('hidden'); if (editorOpen) closeEditor(); }
   if (e.code === 'KeyV') ME.whisper = !!(ME.micOn && audio?.hasMic);
   if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) e.preventDefault();
@@ -363,10 +394,12 @@ function updateCamera(dt) {
   cam.pos.lerp(want, Math.min(1, dt * 7));
   camera.position.copy(cam.pos); camera.lookAt(cam.target);
   // murs entre la caméra et le joueur : on les estompe
-  const dir = tmpV.copy(cam.target).sub(cam.pos); const len = dir.length(); dir.normalize();
-  ray.set(cam.pos, dir); ray.far = len - 0.3;
-  const hits = ray.intersectObjects(world.fadeables, false);
-  const now = new Set(hits.map((h) => h.object.userData.wall));
+  const now = new Set();
+  for (const dy of [0, -0.9]) {
+    const dir = tmpV.copy(cam.target); dir.y += dy; dir.sub(cam.pos); const len = dir.length(); dir.normalize();
+    ray.set(cam.pos, dir); ray.far = len - 0.3;
+    for (const h of ray.intersectObjects(world.fadeables, false)) now.add(h.object.userData.wall);
+  }
   for (const w of faded) if (!now.has(w)) setFade(w, false);
   for (const w of now) if (!faded.has(w)) setFade(w, true);
   faded = now;
@@ -386,9 +419,9 @@ function counts() {
 }
 function onZoneChange() {
   const room = ROOMS[ME.zone];
-  $('zoneName').textContent = room ? room.short : 'DEHORS';
-  $('zoneName').style.color = room?.color || '#fff';
-  $('chatTitle').textContent = 'CHAT · ' + (chatScope(ME.zone) === 'commun' ? 'ACCUEIL & COULOIR' : room.short);
+  $('zoneName').textContent = room ? room.label : 'Dehors';
+  $('zoneName').style.color = room?.color || '#2E3484';
+  $('chatTitle').textContent = 'Chat · ' + (chatScope(ME.zone) === 'commun' ? 'Accueil & couloir' : room.label);
   if (ME.zone !== 'amphi' && ME.visio) { ME.visio = false; toast('Mode visio désactivé (tu as quitté l\'amphi)'); }
   if (ME.zone !== 'dressing' && editorOpen) closeEditor();
   renderChat(); renderSide(); renderActions();
@@ -523,22 +556,27 @@ function openEditor() {
   renderSide(true); renderHint();
 }
 function closeEditor() { editorOpen = false; store.set('wy-look', ME.look); cam.yaw = ME.r + Math.PI; renderSide(true); toast('Avatar enregistré ✔'); }
+let edTab = 'silhouette';
+const ED_TABS = {
+  silhouette: ['Silhouette', [['Taille', 'opt', L.height, OPTIONS.height], ['Corpulence', 'opt', L.build, OPTIONS.build], ['Teint', 'sw', L.skin, PALETTE.skin]]],
+  visage: ['Visage', [['Yeux', 'opt', L.eyes, OPTIONS.eyes], ['Sourcils', 'opt', L.brows, OPTIONS.brows], ['Barbe', 'opt', L.facial, OPTIONS.facial]]],
+  cheveux: ['Cheveux', [['Coupe', 'opt', L.hair, OPTIONS.hair], ['Couleur', 'sw', L.hairColor, PALETTE.hair]]],
+  tenue: ['Tenue', [['Haut', 'opt', L.top, OPTIONS.top], ['Couleur du haut', 'sw', L.topColor, PALETTE.cloth], ['Couleur secondaire', 'sw', L.top2Color, PALETTE.cloth], ['Bas', 'opt', L.bottom, OPTIONS.bottom], ['Couleur du bas', 'sw', L.bottomColor, PALETTE.cloth], ['Chaussures', 'sw', L.shoes, PALETTE.shoes]]],
+  acc: ['Accessoires', [['Accessoire', 'opt', L.acc, OPTIONS.acc], ['Couleur', 'sw', L.accColor, PALETTE.cloth]]],
+};
 function renderEditor() {
   const el = $('side'); el.classList.remove('hidden');
-  const L = ME.look;
-  const sw = (arr, idx, slot) => arr.map((c, i) => `<span class="sw ${L[slot] === i ? 'sel' : ''}" data-s="${slot}" data-i="${i}" style="background:${c}"></span>`).join('');
-  const op = (arr, slot) => arr.map((t, i) => `<span class="opt ${L[slot] === i ? 'sel' : ''}" data-s="${slot}" data-i="${i}">${t}</span>`).join('');
-  el.innerHTML = `<h3>MON AVATAR</h3>
-    <div class="row">Peau</div>${sw(PALETTE.skin, 0, 0)}
-    <div class="row">Coiffure</div>${op(HAIR_STYLES, 1)}
-    <div class="row">Couleur des cheveux</div>${sw(PALETTE.hair, 0, 2)}
-    <div class="row">Haut</div>${sw(PALETTE.cloth, 0, 3)}
-    <div class="row">Bas</div>${sw(PALETTE.cloth, 0, 4)}
-    <div class="row">Accessoire</div>${op(ACCS, 5)}
-    <p style="margin-top:12px;display:flex;gap:8px"><button id="edRand" class="ghost">🎲 Au hasard</button><button id="edDone">✔ Terminer</button></p>`;
+  const LK = ME.look;
+  const tabs = Object.entries(ED_TABS).map(([k, [t]]) => `<span class="tab ${k === edTab ? 'sel' : ''}" data-tab="${k}">${t}</span>`).join('');
+  const rows = ED_TABS[edTab][1].map(([label, kind, slot, arr]) => `<div class="row">${label}</div>` + (kind === 'sw'
+    ? arr.map((c, i) => `<span class="sw ${LK[slot] === i ? 'sel' : ''}" data-s="${slot}" data-i="${i}" style="background:${c}"></span>`).join('')
+    : arr.map((t, i) => `<span class="opt ${LK[slot] === i ? 'sel' : ''}" data-s="${slot}" data-i="${i}">${t}</span>`).join(''))).join('');
+  el.innerHTML = `<h3>Mon avatar</h3><div class="tabs">${tabs}</div>${rows}
+    <p style="margin-top:14px;display:flex;gap:8px"><button id="edRand" class="ghost">🎲 Au hasard</button><button id="edDone">✔ Terminer</button></p>`;
+  el.querySelectorAll('[data-tab]').forEach((n) => (n.onclick = () => { edTab = n.dataset.tab; renderEditor(); }));
   el.querySelectorAll('[data-s]').forEach((n) => (n.onclick = () => { ME.look[+n.dataset.s] = +n.dataset.i; applyLook(meAv, ME.look); renderEditor(); }));
   $('edDone').onclick = closeEditor;
-  $('edRand').onclick = () => { ME.look = [PALETTE.skin.length, HAIR_STYLES.length, PALETTE.hair.length, PALETTE.cloth.length, PALETTE.cloth.length, ACCS.length].map((n) => Math.floor(Math.random() * n)); applyLook(meAv, ME.look); renderEditor(); };
+  $('edRand').onclick = () => { ME.look = randomLook(); applyLook(meAv, ME.look); renderEditor(); };
 }
 
 // ---------------- Amphi : agenda ----------------
@@ -553,22 +591,22 @@ async function connectAgenda() {
 function drawAmphiScreen() {
   world.amphiTV.redrawIdle((c) => {
     const { cur, next } = currentAndNext(agenda);
-    const g = c.getContext('2d');
-    g.fillStyle = '#0d1b3a'; g.fillRect(0, 0, c.width, c.height);
-    g.strokeStyle = '#ff8a3d'; g.lineWidth = 8; g.strokeRect(4, 4, c.width - 8, c.height - 8);
-    g.textAlign = 'left'; g.textBaseline = 'top';
-    g.fillStyle = '#ff8a3d'; g.font = `16px ${FONT_TITLE}`; g.fillText('AMPHITHÉÂTRE', 22, 20);
-    g.fillStyle = '#9aa4b8'; g.font = `24px ${FONT_TEXT}`; g.fillText(agendaReal ? 'Agenda Google' : 'Agenda (démo)', 330, 18);
-    let y = 58;
+    const g = c.getContext('2d'), w = c.width, h = c.height, u = h / 100;
+    const gr = g.createLinearGradient(0, 0, w, h); gr.addColorStop(0, BRAND.navy); gr.addColorStop(1, '#1A1E55');
+    g.fillStyle = gr; g.fillRect(0, 0, w, h);
+    g.fillStyle = 'rgba(214,0,108,.16)'; g.beginPath(); g.arc(w * 0.92, h * 0.05, h * 0.55, 0, 7); g.fill();
+    const X = w * 0.05; g.textAlign = 'left'; g.textBaseline = 'alphabetic';
+    g.fillStyle = BRAND.rose; g.font = `700 ${4.5 * u}px Poppins`; g.fillText('AMPHITHÉÂTRE · ' + (agendaReal ? 'AGENDA GOOGLE' : 'AGENDA DE DÉMO'), X, 12 * u);
+    let y = 26 * u;
     if (cur) {
-      g.fillStyle = '#ff4d4d'; g.font = `12px ${FONT_TITLE}`; g.fillText('● EN COURS', 22, y); y += 24;
-      g.fillStyle = '#fff'; g.font = `32px ${FONT_TEXT}`; g.fillText(cur.title.slice(0, 34), 22, y); y += 32;
-      g.fillStyle = '#c9d2ea'; g.font = `24px ${FONT_TEXT}`; g.fillText(`${fmtTime(cur.start)} – ${fmtTime(cur.end)} · rejoindre via le panneau`, 22, y); y += 38;
-    } else { g.fillStyle = '#c9d2ea'; g.font = `28px ${FONT_TEXT}`; g.fillText('Pas de réunion en cours', 22, y); y += 40; }
-    g.fillStyle = '#f2c14e'; g.font = `10px ${FONT_TITLE}`; g.fillText('À VENIR', 22, y); y += 20;
-    g.font = `24px ${FONT_TEXT}`; g.fillStyle = '#fff';
-    for (const e of next) { g.fillText(`${fmtDay(e.start)} ${fmtTime(e.start)} · ${e.title}`.slice(0, 46), 22, y); y += 26; }
-    g.fillStyle = 'rgba(255,255,255,.04)'; for (let yy = 0; yy < c.height; yy += 3) g.fillRect(0, yy, c.width, 1);
+      g.fillStyle = '#fff'; g.font = `500 ${4.5 * u}px Poppins`; g.fillText(`● En cours · ${fmtTime(cur.start)} – ${fmtTime(cur.end)}`, X, y); y += 11 * u;
+      g.font = `800 ${8.5 * u}px Poppins`; g.fillText(cur.title.slice(0, 40), X, y, w * 0.9); y += 8 * u;
+      g.fillStyle = 'rgba(255,255,255,.7)'; g.font = `500 ${4 * u}px Poppins`; g.fillText('Rejoins la visio depuis le panneau à droite de ton écran', X, y); y += 12 * u;
+    } else { g.fillStyle = '#fff'; g.font = `700 ${7 * u}px Poppins`; g.fillText('Pas de réunion en cours', X, y + 4 * u); y += 18 * u; }
+    g.fillStyle = BRAND.rose; g.fillRect(X, y - 2 * u, 10 * u, 0.8 * u); y += 6 * u;
+    g.fillStyle = '#fff'; g.font = `700 ${4 * u}px Poppins`; g.fillText('À VENIR', X, y); y += 8 * u;
+    g.font = `500 ${4.6 * u}px Poppins`;
+    for (const e of next) { g.fillStyle = 'rgba(255,255,255,.65)'; g.fillText(`${fmtDay(e.start)} ${fmtTime(e.start)}`, X, y); g.fillStyle = '#fff'; g.fillText(e.title.slice(0, 50), X + w * 0.22, y, w * 0.7); y += 8 * u; }
   });
 }
 setInterval(() => { drawAmphiScreen(); if (ME.zone === 'amphi') renderSide(); }, 60000);
@@ -578,15 +616,15 @@ const mm = $('minimap').getContext('2d');
 function drawMinimap() {
   const W = 200, H = 200, x0 = -16, z0 = -30, sc = 200 / 48;
   const X = (x) => (x - x0) * sc + 18, Z = (z) => (z - z0) * sc;
-  mm.fillStyle = '#0c0f20'; mm.fillRect(0, 0, W, H);
+  mm.fillStyle = '#ffffff'; mm.fillRect(0, 0, W, H);
   for (const [k, r] of Object.entries(ROOMS)) {
-    mm.fillStyle = r.color + (k === ME.zone ? '88' : '40'); mm.fillRect(X(r.x0), Z(r.z0), (r.x1 - r.x0) * sc, (r.z1 - r.z0) * sc);
+    mm.fillStyle = r.color + (k === ME.zone ? '66' : '22'); mm.fillRect(X(r.x0), Z(r.z0), (r.x1 - r.x0) * sc, (r.z1 - r.z0) * sc);
     mm.strokeStyle = r.color; mm.lineWidth = 1; mm.strokeRect(X(r.x0) + 0.5, Z(r.z0) + 0.5, (r.x1 - r.x0) * sc - 1, (r.z1 - r.z0) * sc - 1);
   }
-  for (const r of remotes.values()) { mm.fillStyle = r.bot ? '#9aa4b8' : PALETTE.cloth[r.s.l?.[3] ?? 0]; mm.fillRect(X(r.cur.x) - 2, Z(r.cur.z) - 2, 4, 4); }
+  for (const r of remotes.values()) { mm.fillStyle = r.bot ? '#9AA0B4' : BRAND.navy; mm.fillRect(X(r.cur.x) - 2, Z(r.cur.z) - 2, 4, 4); }
   if (inGame) {
     mm.save(); mm.translate(X(ME.x), Z(ME.z)); mm.rotate(-ME.r + Math.PI);
-    mm.fillStyle = '#fff'; mm.beginPath(); mm.moveTo(0, -6); mm.lineTo(4, 4); mm.lineTo(-4, 4); mm.closePath(); mm.fill(); mm.restore();
+    mm.fillStyle = BRAND.rose; mm.beginPath(); mm.moveTo(0, -6); mm.lineTo(4, 4); mm.lineTo(-4, 4); mm.closePath(); mm.fill(); mm.restore();
   }
 }
 
@@ -618,12 +656,13 @@ function frame() {
     }
   }
   updateCamera(dt);
+  perfTick(dt);
   drawMinimap();
-  renderer.render(scene, camera);
+  if (!NORENDER) renderer.render(scene, camera);
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
 initLogin();
 
 // pour le débogage / tests
-window.__wy = { ME, remotes, world, get net() { return net; }, get solo() { return solo; }, get audio() { return audio; }, myState };
+window.__wy = { ME, remotes, world, renderer, scene, sun, get net() { return net; }, get solo() { return solo; }, get audio() { return audio; }, myState };
