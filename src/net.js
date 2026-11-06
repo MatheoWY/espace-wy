@@ -89,7 +89,12 @@ export class Net {
     hp.on('close', () => { this.isHub = false; this.hubPeer = null; });
     clearInterval(this._bcast);
     this._bcast = setInterval(() => {
-      const list = []; for (const v of this.hubClients.values()) if (v.ok && v.state) list.push(v.state);
+      this._bn = (this._bn || 0) + 1; const full = this._bn % 10 === 0;
+      const list = [];
+      for (const v of this.hubClients.values()) if (v.ok && v.state) {
+        if (full || v.lookDirty || v.fresh !== false) list.push(v.state); else { const { l, ...rest } = v.state; list.push(rest); }
+        v.lookDirty = false; v.fresh = false;
+      }
       const msg = { t: 'r', l: list };
       for (const v of this.hubClients.values()) if (v.ok && v.conn.open) v.conn.send(msg);
     }, 200);
@@ -112,7 +117,7 @@ export class Net {
     }
     if (!entry?.ok) return;
     entry.last = Date.now();
-    if (d.t === 's') { entry.state = { ...d.s, id: c.peer, n: entry.state.n }; return; }
+    if (d.t === 's') { if (d.s.l !== undefined) entry.lookDirty = true; entry.state = { ...entry.state, ...d.s, id: c.peer, n: entry.state.n }; return; }
     if (d.t === 'chat' || d.t === 'note' || d.t === 'clear') {
       const out = { ...d, from: entry.state.n, fid: c.peer, ts: Date.now() };
       if (d.t === 'note') { this.notes.push(d.n); this.notes = this.notes.slice(-40); }
@@ -132,7 +137,14 @@ export class Net {
       c.send({ t: 'hello', token: this.auth.token || '', s: this.getState() });
       this.status(this.isHub ? 'Connecté (tu héberges le salon)' : 'Connecté');
       clearInterval(this._stateT);
-      this._stateT = setInterval(() => { if (this.linkOpen) try { c.send({ t: 's', s: this.getState() }); } catch {} }, 150);
+      this._stateT = setInterval(() => {
+        if (!this.linkOpen) return;
+        const st = this.getState(); const lk = JSON.stringify(st.l);
+        // l'apparence n'est renvoyée que si elle change (ou toutes les ~2 s)
+        this._lt = (this._lt || 0) + 1;
+        if (lk === this._lk && this._lt % 13) delete st.l; else this._lk = lk;
+        try { c.send({ t: 's', s: st }); } catch {}
+      }, 150);
     });
     c.on('data', (d) => this.clientHandle(d));
     const lost = () => {

@@ -1,7 +1,7 @@
 // Espace virtuel Work&You — POC
 import * as THREE from 'three';
 import { buildWorld, BRAND, ROOMS, ENCLOSED, zoneAt, heightAt, onStage, collide, drawTextCanvas, FONT_TITLE, FONT_TEXT } from './world.js';
-import { buildAvatar, applyLook, animateAvatar, makeLabel, normLook, randomLook, PALETTE, OPTIONS, L, DEFAULT_LOOK } from './avatar.js';
+import { buildAvatar, applyLook, animateAvatar, makeLabel, normLook, randomLook, lookKey, PALETTE, OPTIONS, SLIDERS, DEFAULT_LOOK } from './avatar.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { SpatialAudio, computeGain } from './audio.js';
 import { waitForGis, renderGoogleButton } from './auth.js';
@@ -76,7 +76,7 @@ Promise.all(['800 40px Poppins', '700 40px Poppins', '600 40px Poppins', '500 40
 
 // ---------------- État local ----------------
 const ME = {
-  id: 'moi', name: '', email: '', token: '', look: normLook(store.get('wy-look', DEFAULT_LOOK)),
+  id: 'moi', name: '', email: '', token: '', look: normLook(store.get('wy-look3', null) || randomLook()),
   x: (Math.random() - 0.5) * 4, y: 0, z: 12.5, r: Math.PI, seat: null,
   zone: 'accueil', micOn: true, visio: false, whisper: false, talking: false, share: null, joinedAt: Date.now(),
 };
@@ -181,12 +181,13 @@ function upsertRemote(s) {
   let r = remotes.get(s.id);
   if (!r) {
     const av = buildAvatar(s.l); const label = makeLabel(s.n || '?'); av.root.add(label.sprite); scene.add(av.root);
-    r = { id: s.id, av, label, s, cur: { x: s.x, y: s.y, z: s.z, r: s.r }, lookKey: String(s.l), speed: 0, bot: !!s.bot };
+    r = { id: s.id, av, label, s, cur: { x: s.x, y: s.y, z: s.z, r: s.r }, lookKey: lookKey(s.l), speed: 0, bot: !!s.bot };
     remotes.set(s.id, r);
     if (inGame && !s.bot) sysMsg(`${s.n} est arrivé·e dans l'espace`);
   }
+  if (s.l === undefined && r.s) s.l = r.s.l;
   r.s = s;
-  const lk = String(s.l); if (lk !== r.lookKey) { r.lookKey = lk; applyLook(r.av, s.l); }
+  const lk = lookKey(s.l); if (lk && lk !== r.lookKey) { r.lookKey = lk; applyLook(r.av, s.l); }
 }
 function removeRemote(id) {
   const r = remotes.get(id); if (!r) return;
@@ -386,10 +387,10 @@ const ray = new THREE.Raycaster();
 let faded = new Set();
 function updateCamera(dt) {
   if (inGame) {
-    const ty = ME.y + (editorOpen ? 1.1 : 1.2);
+    const ty = ME.y + (editorOpen ? 1.3 : 1.2);
     cam.target.lerp(tmpV.set(ME.x, ty, ME.z), Math.min(1, dt * 8));
   } else { cam.yaw += dt * 0.08; cam.target.set(0, 1, 6); }
-  const dist = editorOpen ? 4 : cam.dist, pitch = editorOpen ? 0.25 : cam.pitch;
+  const dist = editorOpen ? 4.6 : cam.dist, pitch = editorOpen ? 0.22 : cam.pitch;
   const want = tmpV.set(
     cam.target.x + Math.sin(cam.yaw) * Math.cos(pitch) * dist,
     cam.target.y + Math.sin(pitch) * dist,
@@ -436,7 +437,7 @@ function renderSide(force) {
   const el = $('side'); const z = ME.zone;
   const caller = callerName();
   const { cur, next } = currentAndNext(agenda);
-  const key = [z, !!ME.seat, ME.seat?.kind, caller, ME.visio, editorOpen, agendaReal, cur?.title, next.length, ME.look.join()].join('|');
+  const key = [z, !!ME.seat, ME.seat?.kind, caller, ME.visio, editorOpen, agendaReal, cur?.title, next.length].join('|');
   if (key === sideKey && !force) return; sideKey = key;
   if (editorOpen) return renderEditor();
   let h = '';
@@ -558,28 +559,38 @@ function openEditor() {
   ME.r = Math.PI / 2; cam.yaw = ME.r; // face au miroir, la caméra se place côté miroir
   renderSide(true); renderHint();
 }
-function closeEditor() { editorOpen = false; store.set('wy-look', ME.look); cam.yaw = ME.r + Math.PI; renderSide(true); toast('Avatar enregistré ✔'); }
+function closeEditor() { editorOpen = false; store.set('wy-look3', ME.look); cam.yaw = ME.r + Math.PI; renderSide(true); toast('Avatar enregistré ✔'); }
 let edTab = 'silhouette';
 const ED_TABS = {
-  silhouette: ['Silhouette', [['Taille', 'opt', L.height, OPTIONS.height], ['Corpulence', 'opt', L.build, OPTIONS.build], ['Teint', 'sw', L.skin, PALETTE.skin]]],
-  visage: ['Visage', [['Yeux', 'opt', L.eyes, OPTIONS.eyes], ['Sourcils', 'opt', L.brows, OPTIONS.brows], ['Barbe', 'opt', L.facial, OPTIONS.facial]]],
-  cheveux: ['Cheveux', [['Coupe', 'opt', L.hair, OPTIONS.hair], ['Couleur', 'sw', L.hairColor, PALETTE.hair]]],
-  tenue: ['Tenue', [['Haut', 'opt', L.top, OPTIONS.top], ['Couleur du haut', 'sw', L.topColor, PALETTE.cloth], ['Couleur secondaire', 'sw', L.top2Color, PALETTE.cloth], ['Bas', 'opt', L.bottom, OPTIONS.bottom], ['Couleur du bas', 'sw', L.bottomColor, PALETTE.cloth], ['Chaussures', 'sw', L.shoes, PALETTE.shoes]]],
-  acc: ['Accessoires', [['Accessoire', 'opt', L.acc, OPTIONS.acc], ['Couleur', 'sw', L.accColor, PALETTE.cloth]]],
+  silhouette: ['Silhouette', [['sl', 'h'], ['sl', 'b'], ['sl', 'sh'], ['sl', 'lg'], ['sl', 'hd'], ['col', 'sk', 'Teint', PALETTE.skin]]],
+  visage: ['Visage', [['opt', 'ey', 'Yeux', OPTIONS.eyes], ['col', 'ec', 'Couleur des yeux', PALETTE.eyes], ['sl', 'es'], ['sl', 'ed'], ['opt', 'br', 'Sourcils', OPTIONS.brows], ['opt', 'mo', 'Bouche', OPTIONS.mouth], ['opt', 'fa', 'Pilosité', OPTIONS.facial], ['sl', 'fl']]],
+  cheveux: ['Cheveux', [['opt', 'hs', 'Coupe', OPTIONS.hair], ['sl', 'hl'], ['col', 'hc', 'Couleur', PALETTE.hair]]],
+  tenue: ['Tenue', [['opt', 'to', 'Haut', OPTIONS.top], ['col', 'tc', 'Couleur du haut', PALETTE.cloth], ['col', 't2', 'Couleur secondaire', PALETTE.cloth], ['opt', 'bo', 'Bas', OPTIONS.bottom], ['col', 'bc', 'Couleur du bas', PALETTE.cloth], ['col', 'so', 'Chaussures', PALETTE.shoes]]],
+  acc: ['Accessoires', [['opt', 'gl', 'Lunettes', OPTIONS.glasses], ['opt', 'ht', 'Couvre-chef', OPTIONS.hat], ['tog', 'bd', 'Badge Work&You'], ['tog', 'er', 'Boucles d\'oreilles'], ['col', 'ac', 'Couleur des accessoires', PALETTE.cloth]]],
 };
+let edRaf = 0;
+function refreshLook() { if (edRaf) return; edRaf = requestAnimationFrame(() => { edRaf = 0; applyLook(meAv, ME.look); }); }
 function renderEditor() {
   const el = $('side'); el.classList.remove('hidden');
   const LK = ME.look;
   const tabs = Object.entries(ED_TABS).map(([k, [t]]) => `<span class="tab ${k === edTab ? 'sel' : ''}" data-tab="${k}">${t}</span>`).join('');
-  const rows = ED_TABS[edTab][1].map(([label, kind, slot, arr]) => `<div class="row">${label}</div>` + (kind === 'sw'
-    ? arr.map((c, i) => `<span class="sw ${LK[slot] === i ? 'sel' : ''}" data-s="${slot}" data-i="${i}" style="background:${c}"></span>`).join('')
-    : arr.map((t, i) => `<span class="opt ${LK[slot] === i ? 'sel' : ''}" data-s="${slot}" data-i="${i}">${t}</span>`).join(''))).join('');
+  const rows = ED_TABS[edTab][1].map(([kind, key, label, arr]) => {
+    if (kind === 'sl') return `<div class="row">${SLIDERS[key]}</div><input type="range" class="rng" min="0" max="100" value="${Math.round(LK[key] * 100)}" data-sl="${key}">`;
+    if (kind === 'tog') return `<div class="row">${label}</div><span class="opt ${LK[key] ? '' : 'sel'}" data-tog="${key}" data-v="0">Non</span><span class="opt ${LK[key] ? 'sel' : ''}" data-tog="${key}" data-v="1">Oui</span>`;
+    if (kind === 'col') return `<div class="row">${label}</div>` + arr.map((c) => `<span class="sw ${LK[key].toLowerCase() === c.toLowerCase() ? 'sel' : ''}" data-col="${key}" data-c="${c}" style="background:${c}"></span>`).join('') +
+      `<label class="sw pick ${arr.some((c) => c.toLowerCase() === LK[key].toLowerCase()) ? '' : 'sel'}" title="Couleur libre" style="background:${LK[key]}"><input type="color" value="${LK[key]}" data-pick="${key}"></label>`;
+    return `<div class="row">${label}</div>` + arr.map((t, i) => `<span class="opt ${LK[key] === i ? 'sel' : ''}" data-opt="${key}" data-i="${i}">${t}</span>`).join('');
+  }).join('');
   el.innerHTML = `<h3>Mon avatar</h3><div class="tabs">${tabs}</div>${rows}
     <p style="margin-top:14px;display:flex;gap:8px"><button id="edRand" class="ghost">🎲 Au hasard</button><button id="edDone">✔ Terminer</button></p>`;
   el.querySelectorAll('[data-tab]').forEach((n) => (n.onclick = () => { edTab = n.dataset.tab; renderEditor(); }));
-  el.querySelectorAll('[data-s]').forEach((n) => (n.onclick = () => { ME.look[+n.dataset.s] = +n.dataset.i; applyLook(meAv, ME.look); renderEditor(); }));
+  el.querySelectorAll('[data-opt]').forEach((n) => (n.onclick = () => { ME.look[n.dataset.opt] = +n.dataset.i; refreshLook(); renderEditor(); }));
+  el.querySelectorAll('[data-tog]').forEach((n) => (n.onclick = () => { ME.look[n.dataset.tog] = +n.dataset.v; refreshLook(); renderEditor(); }));
+  el.querySelectorAll('[data-col]').forEach((n) => (n.onclick = () => { ME.look[n.dataset.col] = n.dataset.c; refreshLook(); renderEditor(); }));
+  el.querySelectorAll('[data-pick]').forEach((n) => { n.oninput = () => { ME.look[n.dataset.pick] = n.value; n.parentElement.style.background = n.value; refreshLook(); }; n.onchange = () => renderEditor(); });
+  el.querySelectorAll('[data-sl]').forEach((n) => (n.oninput = () => { ME.look[n.dataset.sl] = +n.value / 100; refreshLook(); }));
   $('edDone').onclick = closeEditor;
-  $('edRand').onclick = () => { ME.look = randomLook(); applyLook(meAv, ME.look); renderEditor(); };
+  $('edRand').onclick = () => { ME.look = randomLook(); refreshLook(); renderEditor(); };
 }
 
 // ---------------- Amphi : agenda ----------------
