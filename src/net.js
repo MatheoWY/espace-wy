@@ -35,6 +35,7 @@ export class Net {
     this.share = null; // {tv, zone, stream, calls: Map}
     this.notes = [];
     this.wins = [];
+    this.duels = [];
     this.joinedAt = Date.now();
     this.closed = false;
   }
@@ -131,16 +132,17 @@ export class Net {
       if (!ok) { c.send({ t: 'deny', reason }); setTimeout(() => c.close(), 400); return; }
       entry = { conn: c, ok: true, state: { ...d.s, id: c.peer }, last: Date.now() };
       this.hubClients.set(c.peer, entry);
-      const changed = this.mergeWins(d.wins);
-      c.send({ t: 'welcome', notes: this.notes, wins: this.wins });
-      if (changed) for (const v of this.hubClients.values()) if (v.ok && v.conn.open && v.conn !== c) v.conn.send({ t: 'wins', list: this.wins });
+      const changed = this.mergeWins(d.wins), changedD = this.mergeDuels(d.duels);
+      c.send({ t: 'welcome', notes: this.notes, wins: this.wins, duels: this.duels });
+      for (const v of this.hubClients.values()) if (v.ok && v.conn.open && v.conn !== c) { if (changed) v.conn.send({ t: 'wins', list: this.wins }); if (changedD) v.conn.send({ t: 'duels', list: this.duels }); }
       return;
     }
     if (!entry?.ok) return;
     entry.last = Date.now();
     if (d.t === 's') { if (d.s.l !== undefined) entry.lookDirty = true; entry.state = { ...entry.state, ...d.s, id: c.peer, n: entry.state.n }; return; }
     if (d.t === 'win') { if (!d.w || typeof d.w.text !== 'string') return; d.w = { id: String(d.w.id).slice(0, 20), type: String(d.w.type).slice(0, 30), text: d.w.text.slice(0, 140), who: entry.state.n, ts: Date.now() }; this.mergeWins([d.w]); }
-    if (d.t === 'chat' || d.t === 'note' || d.t === 'clear' || d.t === 'knock' || d.t === 'admit' || d.t === 'win') {
+    if (d.t === 'duel' && d.k === 'end') this.mergeDuels([{ id: d.id, an: d.an, bn: d.bn, sa: d.sa, sb: d.sb, ts: Date.now() }]);
+    if (d.t === 'chat' || d.t === 'note' || d.t === 'clear' || d.t === 'knock' || d.t === 'admit' || d.t === 'win' || d.t === 'duel') {
       const out = { ...d, from: entry.state.n, fid: c.peer, ts: Date.now() };
       if (d.t === 'note') { this.notes.push(d.n); this.notes = this.notes.slice(-40); }
       if (d.t === 'clear') this.notes = [];
@@ -156,7 +158,7 @@ export class Net {
     c.on('open', () => {
       if (this._attempt !== c) { try { c.close(); } catch {} return; }
       clearTimeout(to); this._attempt = null; this._opening = false; this.link = c; this.linkOpen = true; this.lastR = Date.now();
-      c.send({ t: 'hello', token: this.auth.token || '', s: this.getState(), wins: this.wins });
+      c.send({ t: 'hello', token: this.auth.token || '', s: this.getState(), wins: this.wins, duels: this.duels });
       this.status(this.isHub ? 'Connecté (tu héberges le salon)' : 'Connecté');
       clearInterval(this._stateT);
       this._stateT = setInterval(() => {
@@ -183,11 +185,13 @@ export class Net {
   clientHandle(d) {
     if (!d) return;
     switch (d.t) {
-      case 'welcome': if (this.mergeWins(d.wins) || d.wins) this.on.wins?.(this.wins, null); if (!this.isHub && Array.isArray(d.notes)) { this.notes = d.notes; } else if (this.isHub && d.notes.length === 0 && this.notes.length) { /* hub garde ses notes */ } this.on.notes?.(this.notes); break;
+      case 'welcome': if (this.mergeWins(d.wins) || d.wins) this.on.wins?.(this.wins, null); this.mergeDuels(d.duels); this.on.duels?.(this.duels); if (!this.isHub && Array.isArray(d.notes)) { this.notes = d.notes; } else if (this.isHub && d.notes.length === 0 && this.notes.length) { /* hub garde ses notes */ } this.on.notes?.(this.notes); break;
       case 'r': this.lastR = Date.now(); this.handleRoster(d.l || []); break;
       case 'chat': this.on.chat?.(d); break;
       case 'knock': this.on.knock?.(d); break;
       case 'wins': this.mergeWins(d.list); this.on.wins?.(this.wins, null); break;
+      case 'duels': this.mergeDuels(d.list); this.on.duels?.(this.duels); break;
+      case 'duel': if (d.k === 'end') { this.mergeDuels([{ id: d.id, an: d.an, bn: d.bn, sa: d.sa, sb: d.sb, ts: d.ts }]); this.on.duels?.(this.duels, d); } this.on.duel?.(d); break;
       case 'win': this.mergeWins([d.w]); this.on.wins?.(this.wins, d); break;
       case 'admit': this.on.admit?.(d); break;
       case 'note': if (!this.isHub) { this.notes.push(d.n); this.notes = this.notes.slice(-40); } this.on.notes?.(this.notes); break;
@@ -201,6 +205,13 @@ export class Net {
     const ids = new Set(this.wins.map((w) => w.id)); let changed = false;
     for (const w of list) if (w && w.id && typeof w.text === 'string' && !ids.has(w.id)) { this.wins.push({ id: String(w.id).slice(0, 20), type: String(w.type || '').slice(0, 30), text: w.text.slice(0, 140), who: String(w.who || '').slice(0, 30), ts: +w.ts || Date.now() }); ids.add(w.id); changed = true; }
     if (changed) { this.wins.sort((a, b) => a.ts - b.ts); this.wins = this.wins.slice(-80); }
+    return changed;
+  }
+  mergeDuels(list) {
+    if (!Array.isArray(list)) return false;
+    const ids = new Set(this.duels.map((w) => w.id)); let changed = false;
+    for (const w of list) if (w && w.id && !ids.has(w.id)) { this.duels.push({ id: String(w.id).slice(0, 20), an: String(w.an || '').slice(0, 30), bn: String(w.bn || '').slice(0, 30), sa: +w.sa || 0, sb: +w.sb || 0, ts: +w.ts || Date.now() }); ids.add(w.id); changed = true; }
+    if (changed) { this.duels.sort((a, b) => a.ts - b.ts); this.duels = this.duels.slice(-200); }
     return changed;
   }
   send(msg) { if (this.linkOpen) try { this.link.send(msg); } catch {} }

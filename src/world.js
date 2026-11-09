@@ -14,6 +14,7 @@ export const ROOMS = {
   bulle4:      { x0: -21.5, x1: -16.5, z0: 9, z1: 12.5,   label: 'Bulle 4 · 3 pers.', short: 'BULLE 4', color: '#6A3FB5', cap: 3 },
   bulle5:      { x0: -21.5, x1: -16.5, z0: 12.5, z1: 16,  label: 'Bulle 5 · 3 pers.', short: 'BULLE 5', color: '#6A3FB5', cap: 3 },
   bulles:      { x0: -16.5, x1: -14, z0: 0, z1: 16,       label: 'Espace bulles',     short: 'BULLES',  color: '#9AA3C7' },
+  quiz:        { x0: 12, x1: 22, z0: -10, z1: 0,          label: 'Salle Quiz',        short: 'QUIZ',    color: '#F2A93B' },
   reunion:     { x0: -14, x1: -2, z0: -13, z1: 0,   label: 'Réunion · Brainstorm',    short: 'RÉUNION',     color: BRAND.blue },
   prospection: { x0: -14, x1: -2, z0: -28, z1: -13, label: 'Prospection commerciale', short: 'PROSPECTION', color: BRAND.rose },
   dressing:    { x0: 2,   x1: 12, z0: -10, z1: 0,   label: 'Dressing',                short: 'DRESSING',    color: '#B44DB0' },
@@ -22,9 +23,9 @@ export const ROOMS = {
   accueil:     { x0: -14, x1: 14, z0: 0,   z1: 16,  label: 'Accueil',                 short: 'ACCUEIL',     color: BRAND.navy },
 };
 export const BULLES = ['bulle1', 'bulle2', 'bulle3', 'bulle4', 'bulle5'];
-const ORDER = ['reunion', 'prospection', 'dressing', 'amphi', 'couloir', 'accueil', ...BULLES, 'bulles', 'jardin'];
+const ORDER = ['reunion', 'prospection', 'dressing', 'amphi', 'couloir', 'accueil', ...BULLES, 'bulles', 'quiz', 'jardin'];
 export const ISLAND = { x0: -30, x1: 30, z0: -36, z1: 26 };
-export const ENCLOSED = new Set(['reunion', 'prospection', 'dressing', 'amphi', 'bulle1', 'bulle2', 'bulle3', 'bulle4', 'bulle5']);
+export const ENCLOSED = new Set(['reunion', 'prospection', 'dressing', 'amphi', 'bulle1', 'bulle2', 'bulle3', 'bulle4', 'bulle5', 'quiz']);
 
 export function zoneAt(x, z) {
   for (const k of ORDER) { const r = ROOMS[k]; if (x >= r.x0 && x <= r.x1 && z >= r.z0 && z <= r.z1) return k; }
@@ -203,6 +204,7 @@ export function buildWorld(scene) {
     bulles: ['carpet', '#3A418E', null, 0.95],
     bulle1: ['oak', '#E3C9A4', '#C4A47A', 0.55], bulle2: ['oak', '#E3C9A4', '#C4A47A', 0.55], bulle3: ['oak', '#E3C9A4', '#C4A47A', 0.55],
     bulle4: ['carpet', '#D9D3EE', 'rgba(106,63,181,.25)', 0.95], bulle5: ['carpet', '#D9D3EE', 'rgba(106,63,181,.25)', 0.95],
+    quiz: ['carpet', '#2B3080', 'rgba(214,0,108,.55)', 0.95],
   };
   for (const [k, [kind, a, b, rough]] of Object.entries(floors)) {
     if (k === 'jardin') continue;
@@ -226,7 +228,9 @@ export function buildWorld(scene) {
     { a: [-21.5, 3], b: [-16.5, 3], t: 's' }, { a: [-21.5, 6], b: [-16.5, 6], t: 's' }, { a: [-21.5, 9], b: [-16.5, 9], t: 's' }, { a: [-21.5, 12.5], b: [-16.5, 12.5], t: 's' },
     { a: [14, 0], b: [14, 16], t: 's', gaps: [[8.6, 10.4]] },
     { a: [-14, 0], b: [-2, 0], t: 's' },
-    { a: [2, 0], b: [14, 0], t: 's' },
+    { a: [2, 0], b: [14, 0], t: 's', gaps: [[12.3, 13.7]] },
+    { a: [14, 0], b: [22, 0], t: 's' },
+    { a: [22, -10], b: [22, 0], t: 's' },
     { a: [-2, -13], b: [-2, 0], t: 'g', gaps: [[-7.5, -5.5]] },
     { a: [-2, -28], b: [-2, -13], t: 'g', gaps: [[-21.5, -19.5]] },
     { a: [2, -10], b: [2, 0], t: 'g', gaps: [[-6, -4]] },
@@ -380,6 +384,7 @@ export function buildWorld(scene) {
     amphi: [1.92, 3.25, -19, -Math.PI / 2],
     bulle1: [-16.42, 2.62, 1.5, Math.PI / 2], bulle2: [-16.42, 2.62, 4.5, Math.PI / 2], bulle3: [-16.42, 2.62, 7.5, Math.PI / 2],
     bulle4: [-16.42, 2.62, 10.75, Math.PI / 2], bulle5: [-16.42, 2.62, 14.25, Math.PI / 2],
+    quiz: [13, 2.66, 0.15, 0],
   };
   for (const [k, [x, y, z, ry]] of Object.entries(doors)) {
     const s = makeSign(2.2, 0.55); s.mesh.position.set(x, y, z); s.mesh.rotation.y = ry; W.add(s.mesh); doorSigns[k] = s;
@@ -847,6 +852,67 @@ export function buildWorld(scene) {
   function drawWins(list) { winsList = list.slice(); winsBoard.redraw(); }
   const winsSpot = new THREE.Vector3(-8, 0, 14.6);
 
+  // ===================== SALLE QUIZ =====================
+  rug(17, -5.2, 7, 5.6, (g, w, h) => { g.fillStyle = '#20246A'; g.fillRect(0, 0, w, h); noise(g, w, h, 12); g.strokeStyle = '#F2A93B'; g.lineWidth = 8; g.strokeRect(14, 14, w - 28, h - 28); g.fillStyle = 'rgba(242,169,59,.18)'; for (let i = 0; i < 9; i++) { g.beginPath(); g.arc(30 + Math.random() * (w - 60), 30 + Math.random() * (h - 60), 4 + Math.random() * 6, 0, 7); g.fill(); } });
+  const quizTV = makeTV('tv-quiz', 'quiz', 17, 1.95, -9.82, 0, 6.2, 2.6, 'Salle Quiz', 'Entraîne-toi ou défie un collègue');
+  for (const dx of [-3.25, 3.25]) box(W, 0.06, 2.9, 0.06, M.glow('#F2A93B'), 17 + dx, 0.5, -9.8, 0);
+  canvasPlane(17, 3.75, -9.84, 0, 4.6, 0.95, 240, (g, w, h) => { g.clearRect(0, 0, w, h); g.textAlign = 'center'; g.textBaseline = 'middle'; g.font = `800 ${h * 0.62}px ${FONT_TITLE}`; g.shadowColor = '#F2A93B'; g.shadowBlur = 24; g.fillStyle = '#FFD27A'; g.fillText('QUIZ ?!', w / 2, h * 0.55); });
+  // pupitres de duel
+  const lectern = (x, col, label) => {
+    const g = new THREE.Group(); g.position.set(x, 0, -4.4); W.add(g);
+    box(g, 1.3, 1.0, 0.7, M.white(), 0, 0, 0, 0.06);
+    box(g, 1.32, 0.5, 0.02, lam(col, 0.5), 0, 0.3, 0.36, 0.01);
+    box(g, 1.4, 0.06, 0.8, M.oak(), 0, 1.0, 0, 0.02);
+    cyl(g, 0.16, 0.18, 0.06, M.black(), 0.32, 1.06, 0, 18); cyl(g, 0.12, 0.13, 0.08, M.glow(col === BRAND.rose ? '#FF4D8D' : '#5C8BFF'), 0.32, 1.12, 0, 18);
+    box(g, 0.5, 0.32, 0.03, lam('#15172A', 0.3, 0.5), -0.25, 1.06, -0.15, 0.01);
+    addCol(x - 0.7, x + 0.7, -4.8, -4.0);
+    const c = mkCanvas(400, 150); const t = canvasTex(c); const gg = c.getContext('2d');
+    gg.fillStyle = col; gg.fillRect(0, 0, 400, 150); gg.fillStyle = '#fff'; gg.font = `800 70px ${FONT_TITLE}`; gg.textAlign = 'center'; gg.textBaseline = 'middle'; gg.fillText(label, 200, 80);
+    const p = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 0.45), new THREE.MeshBasicMaterial({ map: t, toneMapped: false })); p.position.set(x, 0.3, -4.03); p.userData.keep = true; W.add(p);
+  };
+  lectern(15.2, BRAND.rose, 'JOUEUR 1'); lectern(18.8, BRAND.blue, 'JOUEUR 2');
+  // podium décoratif
+  box(W, 0.8, 0.75, 0.8, lam('#F2C14E', 0.4, 0.3), 20.9, 0, -8.9, 0.04); box(W, 0.8, 0.5, 0.8, lam('#C0C6D8', 0.4, 0.3), 20.1, 0, -8.9, 0.04); box(W, 0.8, 0.35, 0.8, lam('#C98A5A', 0.4, 0.3), 21.7 - 0.05, 0, -8.1, 0.04);
+  cyl(W, 0.16, 0.1, 0.25, lam('#F2C14E', 0.25, 0.8), 20.9, 0.75, -8.9, 12); cyl(W, 0.05, 0.05, 0.1, lam('#F2C14E', 0.25, 0.8), 20.9, 1.0, -8.9, 8); cyl(W, 0.1, 0.12, 0.04, lam('#F2C14E', 0.25, 0.8), 20.9, 1.1, -8.9, 12);
+  addCol(19.7, 21.9, -9.4, -7.7);
+  // tableau "Podium des défis"
+  let duelsList = [];
+  const duelBoard = canvasPlane(21.86, 1.75, -4.6, -Math.PI / 2, 4.6, 2.5, 300, (g, w, h) => {
+    g.fillStyle = '#ffffff'; g.fillRect(0, 0, w, h);
+    const gr = g.createLinearGradient(0, 0, w, 0); gr.addColorStop(0, '#F2A93B'); gr.addColorStop(1, BRAND.rose);
+    g.fillStyle = gr; g.fillRect(0, 0, w, h * 0.17);
+    g.fillStyle = '#fff'; g.textBaseline = 'middle'; g.textAlign = 'left'; g.font = `800 ${h * 0.085}px ${FONT_TITLE}`; g.fillText('⚔️ Podium des défis', w * 0.03, h * 0.087);
+    const st = {};
+    for (const d of duelsList) { for (const [n, s, o] of [[d.an, d.sa, d.sb], [d.bn, d.sb, d.sa]]) { st[n] = st[n] || { w: 0, p: 0, pts: 0 }; st[n].p++; st[n].pts += s; if (s > o) st[n].w++; } }
+    const rank = Object.entries(st).sort((a, b) => b[1].w - a[1].w || b[1].pts - a[1].pts).slice(0, 3);
+    const medals = ['🥇', '🥈', '🥉'];
+    g.textBaseline = 'alphabetic';
+    if (!rank.length) { g.textAlign = 'center'; g.fillStyle = '#8C93C4'; g.font = `600 ${h * 0.06}px ${FONT_TEXT}`; g.fillText('Aucun duel pour l\'instant : lance le premier !', w / 2, h * 0.55); }
+    rank.forEach(([n, v], i) => {
+      const y = h * (0.32 + i * 0.13);
+      g.textAlign = 'left'; g.font = `700 ${h * 0.07}px ${FONT_TEXT}`; g.fillStyle = BRAND.ink; g.fillText(`${medals[i]} ${n}`, w * 0.04, y);
+      g.textAlign = 'right'; g.font = `600 ${h * 0.05}px ${FONT_TEXT}`; g.fillStyle = '#6B7099'; g.fillText(`${v.w} victoire${v.w > 1 ? 's' : ''} · ${v.p} duel${v.p > 1 ? 's' : ''}`, w * 0.96, y);
+    });
+    const last = duelsList.slice(-4).reverse();
+    if (last.length) {
+      g.textAlign = 'left'; g.fillStyle = BRAND.rose; g.font = `700 ${h * 0.045}px ${FONT_TEXT}`; g.fillText('DERNIERS DUELS', w * 0.04, h * 0.73);
+      g.font = `500 ${h * 0.045}px ${FONT_TEXT}`; g.fillStyle = BRAND.ink;
+      last.forEach((d, i) => g.fillText(`${d.an} ${d.sa} – ${d.sb} ${d.bn}`, w * 0.04 + (i % 2) * w * 0.48, h * (0.81 + Math.floor(i / 2) * 0.08), w * 0.45));
+    }
+  });
+  { const fr = new THREE.Mesh(rbox(0.06, 2.7, 4.8, 0.02), lam('#1F2238', 0.5)); fr.position.set(21.9, 1.75, -4.6); W.add(fr); }
+  function drawDuels(list) { duelsList = list.slice(); duelBoard.redraw(); }
+  // coin entraînement
+  for (const z of [-7.6, -5.2, -2.8]) {
+    table(12.75, z, 0.9, 1.4, 0.75, M.white(), M.black());
+    laptop(12.75, 0.75, z, Math.PI / 2, '#2B2F4A');
+    chair(13.65, z, -Math.PI / 2, '#F2A93B', 'quiz-train', 'quiz', 'chair', 0, 'office');
+  }
+  bench(17, -1.0, Math.PI, 'quiz-public');
+  plant(21.3, -0.8, 1.0, 'palm', BRAND.navy); plant(12.7, -0.8, 0.8, 'snake', '#F2A93B'); plant(12.7, -9.3, 0.9, 'tall', BRAND.rose);
+  wallLight(21.87, 2.4, -1.8, -Math.PI / 2, '#FFE7C2'); wallLight(21.87, 2.4, -7.4, -Math.PI / 2, '#FFE7C2');
+  const quizSpot = new THREE.Vector3(17, 0, -5);
+
   // ===================== ESPACE BULLES =====================
   // panneau d'accès depuis l'accueil
   canvasPlane(-13.86, 2.62, 14, Math.PI / 2, 2.4, 0.5, 260, (g, w, h) => { g.fillStyle = '#6A3FB5'; g.fillRect(0, 0, w, h); g.fillStyle = '#fff'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.font = `700 ${h * 0.42}px ${FONT_TITLE}`; g.fillText('← Espace bulles', w / 2, h / 2); });
@@ -890,7 +956,7 @@ export function buildWorld(scene) {
   // ===================== ACCESSOIRES =====================
   vase(-9.95, 0.4, 7.75); notebook(-9.3, 0.4, 8.3, 0.4, BRAND.rose);
   laptop(7.3, 1.05, 9.6, Math.PI); mug(5.9, 1.05, 9.45); vase(8.4, 1.05, 9.75, BRAND.blue);
-  clock(12.9, 2.35, 0.14, 0); coatRack(-3.3, 14.6); bin(9.3, 8.5);
+  clock(3.1, 2.35, 0.14, 0); coatRack(-3.3, 14.6); bin(9.3, 8.5);
   laptop(-10.2, 0.76, -7.15, Math.PI); laptop(-6.6, 0.76, -5.85, 0, '#2B2F4A'); laptop(-8.4, 0.76, -5.85, 0);
   notebook(-8.4, 0.76, -7.2, 0.2); notebook(-9.4, 0.76, -5.95, -0.3, BRAND.rose);
   mug(-7.5, 0.76, -7.25, BRAND.blue); mug(-10.7, 0.76, -5.9); mug(-6.0, 0.76, -7.0, BRAND.navy);
@@ -912,7 +978,7 @@ export function buildWorld(scene) {
   addCol(I.x0 - 6, I.x0 + 0.5, I.z0 - 6, I.z1 + 6); addCol(I.x1 - 0.5, I.x1 + 6, I.z0 - 6, I.z1 + 6);
   addCol(I.x0 - 6, I.x1 + 6, I.z0 - 6, I.z0 + 0.5); addCol(I.x0 - 6, I.x1 + 6, I.z1 - 0.5, I.z1 + 6);
 
-  const inBuilding = (x, z, m = 0.6) => (x > -14 - m && x < 14 + m && z > -28 - m && z < 16 + m) || (x > 2 - m && x < 22 + m && z > -28 - m && z < -10 + m) || (x > -21.5 - m && x < -14 && z > 0 - m && z < 16 + m);
+  const inBuilding = (x, z, m = 0.6) => (x > -14 - m && x < 14 + m && z > -28 - m && z < 16 + m) || (x > 2 - m && x < 22 + m && z > -28 - m && z < -10 + m) || (x > -21.5 - m && x < -14 && z > 0 - m && z < 16 + m) || (x > 12 - m && x < 22 + m && z > -10 - m && z < 0 + m);
   const inDeck = (x, z, m = 0.4) => x > DECK.x0 - m && x < DECK.x1 + m && z > DECK.z0 - m && z < DECK.z1 + m;
   const nearPath = (x, z) => (Math.abs(x) < 1.6 && z > 15 && z < 26.5) || (z > 18 && z < 20.2 && x > -1 && x < 20) || (x > 17.2 && x < 19.4 && z > 14 && z < 20);
   const free = (x, z) => !inBuilding(x, z) && !inDeck(x, z) && !nearPath(x, z);
@@ -1032,14 +1098,11 @@ export function buildWorld(scene) {
     [-18.5, 22, 1.1, 'round'], [-26, 14, 1.2, 'birch'], [-25.5, 7, 1, 'round'], [-27, 0, 1.3, 'conifer'], [-26.5, -9, 1.1, 'round'], [-27.2, -19, 1.2, 'conifer'], [-25.8, -31, 1.1, 'birch'], [-27.5, 20, 1.2, 'conifer'], [-24.5, 24, 1, 'round'], [-18.2, -6, 1.1, 'round'], [-19.6, -13, 1.2, 'birch'],
     [-18.4, -20, 1.2, 'conifer'], [-19.3, -27, 1.1, 'round'], [-18, -33, 1.2, 'conifer'], [-12, -32.5, 1, 'round'], [-5, -33.5, 1.3, 'conifer'], [2, -32.4, 1.1, 'birch'],
     [8, -33.6, 1.2, 'round'], [14.5, -32.6, 1.1, 'conifer'], [21, -33.4, 1.2, 'round'], [27, -32, 1.1, 'conifer'], [26.5, -25, 1.2, 'round'], [27.4, -17, 1.1, 'birch'],
-    [26.4, -9, 1.2, 'conifer'], [27.6, -2, 1, 'round'], [27.6, 7, 1.1, 'birch'], [27.4, 15, 1.2, 'round'], [26, 22.6, 1.3, 'round'], [18.6, -6.8, 0.9, 'birch'], [11, 23.6, 1, 'birch'], [-11.5, 23.4, 1.1, 'round'],
+    [26.4, -9, 1.2, 'conifer'], [27.6, -2, 1, 'round'], [27.6, 7, 1.1, 'birch'], [27.4, 15, 1.2, 'round'], [26, 22.6, 1.3, 'round'], [11, 23.6, 1, 'birch'], [-11.5, 23.4, 1.1, 'round'],
   ];
   for (const [tx, tz, ts, tt] of treeSpots) tree(tx, tz, ts, tt);
   // pique-nique ouest
   table(-25.2, -3.5, 2, 0.9, 0.76, M.oak(), M.oak()); bench(-25.2, -4.5, 0, 'piquenique'); bench(-25.2, -2.5, Math.PI, 'piquenique');
-  // jardin zen (entre dressing et amphi)
-  for (const [rx, rz, rs] of [[15, -7.5, 1.2], [16.2, -6.8, 0.7], [20.5, -3, 1], [13.5, -2.4, 0.6]]) rock(rx, rz, rs);
-  bench(17, -2.5, 0, 'zen');
   // buissons le long des façades
   for (let z = -26; z <= -2; z += 2.6) bush(-15.1, z, 0.9, z % 2 ? BRAND.rose : null);
   for (let z = 1.2; z <= 15; z += 2.4) bush(-22.6, z, 0.9, Math.round(z) % 2 ? '#ffffff' : BRAND.rose);
@@ -1099,7 +1162,7 @@ export function buildWorld(scene) {
 
   function redrawSigns() { for (const r of redrawers) r(); for (const s of Object.values(doorSigns)) s._k = null; }
 
-  return { group: W, drawWins, winsSpot, WIN_TYPES, bulleDoors, setBlind, setBeacon, glassMat, glassClear, colliders, seats, tvs, board, drawBoard, fadeables, updateDoorSigns, setOnAir, amphiTV, dressing, callSeat, redrawSigns, lights };
+  return { group: W, quizTV, drawDuels, quizSpot, drawWins, winsSpot, WIN_TYPES, bulleDoors, setBlind, setBeacon, glassMat, glassClear, colliders, seats, tvs, board, drawBoard, fadeables, updateDoorSigns, setOnAir, amphiTV, dressing, callSeat, redrawSigns, lights };
 }
 
 // Collision cercle / AABB

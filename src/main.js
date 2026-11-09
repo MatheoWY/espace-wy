@@ -7,6 +7,7 @@ import { SpatialAudio, computeGain } from './audio.js';
 import { waitForGis, renderGoogleButton } from './auth.js';
 import { demoAgenda, requestCalendarToken, fetchAgenda, currentAndNext, fmtTime, fmtDay } from './calendar.js';
 import { Net } from './net.js';
+import { createQuiz, THEMES } from './quiz.js';
 
 const CFG = Object.assign({ ALLOWED_DOMAIN: 'workandyou.fr', ALLOW_TEST_MODE: true, SPACE_ID: 'workandyou-poc', PEER_SERVER: {}, ICE_SERVERS: [{ urls: 'stun:stun.l.google.com:19302' }] }, window.WY_CONFIG || {});
 const qs = new URLSearchParams(location.search);
@@ -85,6 +86,8 @@ let meAv = null, meLabel = null, inGame = false, solo = false, net = null, audio
 const remotes = new Map();
 let notes = [];
 let wins = store.get('wy-wins', []);
+let duels = store.get('wy-duels', []);
+let quiz = null;
 let chatMsgs = [];
 let agenda = demoAgenda(), agendaReal = false;
 let editorOpen = false;
@@ -146,6 +149,7 @@ async function enter(user) {
       setStatus('Connexion au réseau…');
       net = new Net({ cfg: CFG, peerOpts, space: SPACE, auth: { token: ME.token }, localStream: audio.localStream, getState: myState, on: netHandlers() });
       net.wins = wins.slice();
+      net.duels = duels.slice();
       await net.start();
     } catch (e) {
       console.warn(e); net = null; goSolo('Connexion P2P impossible : mode solo');
@@ -156,6 +160,7 @@ async function enter(user) {
   onZoneChange();
   drawAmphiScreen();
   world.drawWins(wins);
+  world.drawDuels(duels);
 }
 function goSolo(msg) { solo = true; setStatus(msg); spawnBots(); }
 function setStatus(s) { $('netStatus').textContent = s; }
@@ -176,6 +181,8 @@ function netHandlers() {
     chat: (d) => addChat({ from: d.from, text: d.text, zone: d.zone, ts: d.ts, mine: d.fid === net?.myId }),
     knock: (d) => onKnock(d),
     wins: (list, d) => onWins(list, d),
+    duel: (d) => quiz?.onNet(d),
+    duels: (list, d) => onDuels(list, d),
     admit: (d) => onAdmit(d),
     notes: (n) => { notes = n.slice(); world.drawBoard(notes); },
     denied: (reason) => { toast('Accès refusé : ' + reason, 8000); setStatus('Accès refusé (' + reason + ')'); },
@@ -253,6 +260,7 @@ const typing = () => ['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagN
 addEventListener('keydown', (e) => {
   if (!inGame) return;
   if (typing()) { if (e.key === 'Escape') document.activeElement.blur(); return; }
+  if (quiz?.open) { if (e.key === 'Escape' && !quiz.busy) quiz.close(); return; }
   keys.add(e.code);
   const k = e.key.toLowerCase();
   if (e.code === 'KeyE' && !e.repeat) interact();
@@ -364,6 +372,7 @@ function nearTV() {
 function sit(seat) {
   ME.seat = seat; ME.x = seat.x; ME.z = seat.z; ME.r = seat.ry;
   if (seat.kind === 'prospect') renderSide(true);
+  if (seat.group === 'quiz-train') setTimeout(() => quiz.openTraining(), 400);
 }
 function stand() {
   const s = ME.seat; if (!s) return; ME.seat = null;
@@ -377,6 +386,7 @@ function interact() {
   if (ME.seat) { stand(); return; }
   if (nearMirror()) { openEditor(); return; }
   if (nearWins()) { openWins(); return; }
+  if (nearLecterns()) { quiz.openDuelMenu(); return; }
   if (nearBoard()) { openNoteModal(); return; }
   const s = nearestSeat(); if (s) sit(s);
 }
@@ -385,7 +395,7 @@ function interact() {
 const tmpV = new THREE.Vector3();
 function updateMe(dt) {
   let ix = 0, iz = 0;
-  if (!editorOpen && !typing()) {
+  if (!editorOpen && !typing() && !quiz?.open) {
     if (keys.has('KeyW') || keys.has('ArrowUp')) iz -= 1;
     if (keys.has('KeyS') || keys.has('ArrowDown')) iz += 1;
     if (keys.has('KeyA') || keys.has('ArrowLeft')) ix -= 1;
@@ -530,6 +540,10 @@ function renderSide(force) {
     h += ME.lock === z ? `<p><button id="lockBtn" class="ghost">🔓 Rouvrir la bulle</button></p><p style="color:var(--mut)">Bulle fermée : les autres doivent frapper (E) pour entrer, tu recevras une notification.</p>`
       : L[z] ? `<p>🔒 Bulle fermée par un collègue.</p>` : `<p><button id="lockBtn" class="alt">🔒 Fermer la bulle</button></p>`;
     if (n > r.cap) h += `<p style="color:#E11D48">Vous êtes ${n} pour ${r.cap} places.</p>`;
+  } else if (z === 'quiz') {
+    h += `<h3>Salle Quiz</h3><p>${QCOUNT} questions sur le réseau Work&You : ${THEMES.join(', ')}.</p>
+      <p><button id="trainBtn">🎯 S'entraîner</button> <button id="duelBtn" class="alt">⚔️ Défier un collègue</button></p>
+      <p style="color:var(--mut)">Entraînement : correction après chaque question. Duel : 10 questions en face à face, points selon la rapidité, résultat affiché sur le podium.</p>`;
   } else if (z === 'bulles') {
     h += `<h3>Espace bulles</h3><p>5 petites salles pour travailler à 2 ou 3 au calme (3 bulles pour 2, 2 bulles pour 3).</p><p>Une bulle fermée affiche « Ne pas déranger » : approche-toi de la porte et appuie sur <b>E</b> pour frapper.</p>`;
   } else if (z === 'dressing') {
@@ -542,6 +556,8 @@ function renderSide(force) {
   $('joinMeet') && ($('joinMeet').onclick = () => { ME.visio = true; setTimeout(() => renderSide(true), 50); toast('Meet s\'ouvre dans un nouvel onglet · mode visio activé'); });
   $('agendaBtn') && ($('agendaBtn').onclick = connectAgenda);
   $('openEd') && ($('openEd').onclick = openEditor);
+  $('trainBtn') && ($('trainBtn').onclick = () => quiz.openTraining());
+  $('duelBtn') && ($('duelBtn').onclick = () => quiz.openDuelMenu());
   $('callBtn') && ($('callBtn').onclick = () => { if (ME.calling) { ME.calling = false; } else { if (callerName()) { toast('Quelqu\'un est déjà en appel'); return; } ME.calling = true; ME.queue = null; } renderSide(true); });
   $('queueBtn') && ($('queueBtn').onclick = () => { ME.queue = ME.queue ? null : Date.now(); renderSide(true); });
   $('lockBtn') && ($('lockBtn').onclick = () => { ME.lock = ME.lock === ME.zone ? null : ME.zone; renderSide(true); toast(ME.lock ? '🔒 Bulle fermée' : '🔓 Bulle ouverte'); });
@@ -633,6 +649,7 @@ function renderHint() {
   else if (nearLockedDoor()) h = '<kbd>E</kbd> frapper à la porte (bulle fermée)';
   else if (nearMirror()) h = '<kbd>E</kbd> personnaliser mon avatar';
   else if (nearWins()) h = '<kbd>E</kbd> tableau des victoires 🏆';
+  else if (nearLecterns()) h = '<kbd>E</kbd> défier un collègue ⚔️';
   else if (nearBoard()) h = '<kbd>E</kbd> ajouter un post-it';
   else { const s = nearestSeat(); if (s) h = '<kbd>E</kbd> ' + (s.kind === 'prospect' ? 's\'installer à la table d\'appels' : 's\'asseoir'); }
   if (ME.whisper) h = '🤫 Tu chuchotes (voisins à ~3 m)';
@@ -660,6 +677,35 @@ function renderChat() {
   $('chatLog').scrollTop = 1e6;
 }
 
+// ---------------- Quiz ----------------
+function onDuels(list, d) {
+  duels = list.slice(); store.set('wy-duels', duels.slice(-200)); world.drawDuels(duels);
+  if (d) sysMsg(`⚔️ Duel quiz : ${d.an} ${d.sa} – ${d.sb} ${d.bn}${d.sa === d.sb ? ' (égalité)' : ''}`);
+}
+let liveT = 0;
+function onLive(d) {
+  clearTimeout(liveT);
+  world.quizTV.redrawIdle((c) => {
+    const g = c.getContext('2d'), w = c.width, h = c.height, u = h / 100;
+    const gr = g.createLinearGradient(0, 0, w, h); gr.addColorStop(0, '#20246A'); gr.addColorStop(1, '#3A1E6A'); g.fillStyle = gr; g.fillRect(0, 0, w, h);
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillStyle = '#FFD27A'; g.font = `800 ${9 * u}px Poppins`; g.fillText(d.k === 'end' ? 'FIN DU DUEL' : d.k === 'start' ? 'DUEL EN COURS' : `QUESTION ${d.i + 1} / ${d.n}`, w / 2, 16 * u);
+    const sa = d.k === 'end' ? d.sa : d.k === 'rev' ? d.tot.a : 0, sb = d.k === 'end' ? d.sb : d.k === 'rev' ? d.tot.b : 0;
+    for (const [x, name, sc, col] of [[0.27, d.an, sa, '#FF4D8D'], [0.73, d.bn, sb, '#5C8BFF']]) {
+      g.fillStyle = col; g.font = `800 ${10 * u}px Poppins`; g.fillText(name, w * x, 42 * u, w * 0.4);
+      g.fillStyle = '#fff'; g.font = `800 ${22 * u}px Poppins`; g.fillText(sc, w * x, 70 * u);
+    }
+    g.fillStyle = 'rgba(255,255,255,.6)'; g.font = `700 ${10 * u}px Poppins`; g.fillText('VS', w / 2, 56 * u);
+    if (d.k === 'end') { g.fillStyle = '#FFD27A'; g.font = `700 ${6 * u}px Poppins`; g.fillText(sa === sb ? 'Égalité !' : `🏆 ${sa > sb ? d.an : d.bn} remporte le duel`, w / 2, 90 * u); }
+  });
+  if (d.k === 'end') liveT = setTimeout(() => { world.quizTV.custom = null; world.redrawSigns(); }, 25000);
+}
+function quizPeople() {
+  const out = [];
+  for (const r of remotes.values()) if (!r.bot) out.push({ id: r.id, name: r.s.n, where: ROOMS[r.s.zone]?.label || '', busy: false });
+  return out;
+}
+
 // ---------------- Tableau des victoires ----------------
 const WIN_TYPES = Object.keys(world.WIN_TYPES);
 function onWins(list, d) {
@@ -672,6 +718,7 @@ function onWins(list, d) {
   if (winsOpen) openWins();
 }
 let winsOpen = false;
+function nearLecterns() { return ME.zone === 'quiz' && !ME.seat && Math.hypot(world.quizSpot.x - ME.x, world.quizSpot.z - ME.z) < 2.6; }
 function nearWins() { return ME.zone === 'accueil' && Math.hypot(world.winsSpot.x - ME.x, world.winsSpot.z - ME.z) < 3.2; }
 function openWins() {
   winsOpen = true;
@@ -849,5 +896,8 @@ function frame() {
 requestAnimationFrame(frame);
 initLogin();
 
+const QCOUNT = 99;
+quiz = createQuiz({ esc, toast, ding, sysMsg, getNet: () => net, getMe: () => ({ id: net?.myId, name: ME.name }), isSolo: () => solo || !net, getPeople: quizPeople, onLive });
+
 // pour le débogage / tests
-window.__wy = { ME, remotes, world, renderer, scene, sun, cam, get net() { return net; }, get solo() { return solo; }, get audio() { return audio; }, myState };
+window.__wy = { get quiz() { return quiz; }, ME, remotes, world, renderer, scene, sun, cam, get net() { return net; }, get solo() { return solo; }, get audio() { return audio; }, myState };
