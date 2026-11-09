@@ -545,7 +545,7 @@ function renderSide(force) {
       <p><button id="trainBtn">🎯 S'entraîner</button> <button id="duelBtn" class="alt">⚔️ Défier un collègue</button></p>
       <p style="color:var(--mut)">Entraînement : correction après chaque question. Duel : 10 questions en face à face, points selon la rapidité, résultat affiché sur le podium.</p>`;
   } else if (z === 'bulles') {
-    h += `<h3>Espace bulles</h3><p>5 petites salles pour travailler à 2 ou 3 au calme (3 bulles pour 2, 2 bulles pour 3).</p><p>Une bulle fermée affiche « Ne pas déranger » : approche-toi de la porte et appuie sur <b>E</b> pour frapper.</p>`;
+    h += `<h3>Couloir quiz & bulles</h3><p>Au fond à gauche : la <b>salle Quiz</b>. Plus loin : 5 <b>bulles cosy</b> pour travailler à 2 ou 3 au calme (3 bulles pour 2, 2 bulles pour 3).</p><p>Une bulle fermée affiche « Ne pas déranger » : approche-toi de la porte et appuie sur <b>E</b> pour frapper.</p>`;
   } else if (z === 'dressing') {
     h += `<h3>DRESSING</h3><p>Monte sur le podium face au miroir et appuie sur <b>E</b> (ou le bouton ci-dessous) pour personnaliser ton avatar.</p><p><button id="openEd">👕 Personnaliser</button></p>`;
   } else if (z === 'reunion') {
@@ -842,8 +842,8 @@ setInterval(() => { drawAmphiScreen(); if (ME.zone === 'amphi') renderSide(); },
 // ---------------- Mini-carte ----------------
 const mm = $('minimap').getContext('2d');
 function drawMinimap() {
-  const W = 200, H = 200, x0 = -31, z0 = -37, sc = 200 / 64;
-  const X = (x) => (x - x0) * sc + 4, Z = (z) => (z - z0) * sc;
+  const W = 200, H = 200, x0 = -35, z0 = -37, sc = 200 / 65;
+  const X = (x) => (x - x0) * sc, Z = (z) => (z - z0) * sc + 4;
   mm.fillStyle = '#ffffff'; mm.fillRect(0, 0, W, H);
   for (const [k, r] of Object.entries(ROOMS)) {
     mm.fillStyle = r.color + (k === ME.zone ? '66' : '22'); mm.fillRect(X(r.x0), Z(r.z0), (r.x1 - r.x0) * sc, (r.z1 - r.z0) * sc);
